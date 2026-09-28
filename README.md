@@ -1,1 +1,1 @@
-# ele208_prosjekt
+# Semesterprosjekt ELE208 - Oppgave 1
