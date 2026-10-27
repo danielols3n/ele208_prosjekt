@@ -1,0 +1,46 @@
+RUTEVIS VASK – ØVRE STRIPE (z = 9–10 m)
+
+Stripen 10 x 1 m er delt i ruter på 1,0 x 0,5 m. Liften (boom_yaw,
+boom_pitch, boom_extension) står helt i ro mens armen vasker én rute,
+og flytter seg bare mellom rutene (dysa regnes som av under flyttingen).
+Hver rute vaskes med vannrette rader 0,1 m fra hverandre og 0,12 m/s
+dysefart, som i den opprinnelige banen.
+
+Rekkefølge: nedre halvdel (z 9,0–9,5) fra venstre mot høyre, deretter
+øvre halvdel (z 9,5–10,0) fra høyre mot venstre.
+
+1 x 1 m-ruter er ikke mulig med låst lift: armen rekker ikke hjørnene.
+Ruten x = 8–9 m, z = 9,0–9,5 m kunne heller ikke dekkes som 1,0 x 0,5 m
+og er delt i to ruter på 0,5 x 0,5 m. Totalt 21 stopp.
+
+FILER
+  src/lift_window_sim/trajectories/patches.csv     banen (samme format som demo.csv)
+  src/lift_window_sim/config/patches_report.json   offline kontroll + liftstilling per rute
+  src/lift_window_sim/lift_window_sim/plan_patches.py   planleggeren
+  kjor_ruter.sh                                    kjører banen i Gazebo
+
+KJØRING (samme oppstart som kjor_raster.sh)
+  Terminal 1: bash start_gazebo.sh
+  Terminal 2: bash kjor_lasttest.sh       (kjører roboten til startstillingen)
+  Vent på TOP READY og LOAD TEST FINISHED, deretter i samme Gazebo-økt:
+  Terminal 2: bash kjor_ruter.sh
+  Varighet: ca. 1521 s (25 min) simuleringstid, hvorav ca. 77 s er
+  flytting mellom ruter.
+
+LAGE BANEN PÅ NYTT (f.eks. annen rutestørrelse, ca. 10–20 min)
+  PYTHONPATH=src/lift_window_sim python3 -m lift_window_sim.plan_patches \
+      src/lift_window_sim --width 1.0 --height 0.5 --output patches.csv
+  Planleggeren lagrer rutene i trajectories/<navn>_cache.pkl. Slett den
+  fila hvis du endrer noe og vil planlegge på nytt.
+
+OFFLINE KONTROLL (ikke Gazebo-resultat)
+  - Liften står stille under all vask (maks endring 0,0 i boomleddene).
+  - Største TCP-avvik ved lineær leddinterpolasjon: 2,4 mm; dysevinkel 0,03°.
+  - Ingen kollisjoner (samme boksmodell som plan_strip.py); minste
+    klaring til fasade/bakke 0,29 m.
+  - Maks leddfart 85 % av grensen; passerer kontrollene i wash_demo.
+  - Hele 10 x 1 m ligger innenfor 0,05 m fra en vaskerad (antatt
+    strålebredde 0,13 m gir full geometrisk dekning).
+  - Dysefarten er 0,12 m/s, men saktere nær enkelte armstillinger der
+    leddene ellers ville gått for fort (median 0,106 m/s).
+  Banen er ikke kjørt i Gazebo ennå. Følgeavvik og lasttest må måles der.
