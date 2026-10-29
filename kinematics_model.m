@@ -1,13 +1,7 @@
-% Dette er en komplett fil for den kinematiske modellen til roboten vår.
-% Denne tar for seg hele systemet og simulerer denne enkelt ved hjelp av 
-% Peter Corke's Robotics Toolbox.
-% Den demonstrerer også bevegelse til skittflekker definert av brukeren.
-% Dette gjør den ved hjelp av invers kinematikk.
-
 %% Kinematics model of lift using Toolbox
 clear;
 clc;
-close all;
+close all force;
 
 L(1) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
 L(2) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
@@ -15,51 +9,60 @@ L(3) = Link('prismatic', 'theta', 0, 'a', 0, 'alpha', pi/2, 'qlim', [0 12]);
 L(4) = Link('revolute','d', 0,'a', 0,'alpha', -pi/2);
 
 lift = SerialLink(L, 'name', 'Lift');
-q_lift = [0, 2*pi/3, 6, 2*pi/3 - pi/2];  
-figure;
-lift.teach(q_lift, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.3);
+liftQ = @(t1, t2, d3) [t1, t2, d3, t2 - pi/2];
+q_lift = liftQ(0, 2*pi/3, 6);  
+% figure; hold on; 
+% lift.plot(q_lift, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.3);
 
 %% Kinematics model of robot arm using Toolbox
+
+L_dyse = 0.15; 
 
 L2(1) = Link('revolute', 'd', 0.089159, 'a', 0, 'alpha', pi/2);
 L2(2) = Link('revolute', 'd', 0, 'a', -0.425, 'alpha', 0);
 L2(3) = Link('revolute', 'd', 0, 'a', -0.39225, 'alpha', 0);
-L2(4) = Link('revolute', 'd', 0.10915, 'a', 0, 'alpha', pi/2);
-L2(5) = Link('revolute', 'd', 0.09465, 'a', 0, 'alpha', -pi/2);
-L2(6) = Link('revolute', 'd', 0.0823, 'a', 0, 'alpha', 0);
+L2(4) = Link('revolute', 'd', 0.10915, 'a', 0, 'alpha', -pi/2);
+L2(5) = Link('revolute', 'd', 0.09465, 'a', 0, 'alpha', pi/2);
 
-arm = SerialLink(L2, 'name', 'arm');
-q_arm = [0, -pi/2, pi/2, 0, pi/2, 0];
-figure;
-arm.teach(q_arm, 'workspace', [-1 1 -1 1 -0.5 1.2],    'scale', 0.3)
+arm = SerialLink(L2, 'name', 'arm', 'tool', SE3(0, 0, 0.0823 + L_dyse));       
+q_arm = [0, -pi/2, pi/2, 0, pi/2];
+% Lager en virtuell arm med 6 ledd for å bruke ikine-funksjonen i Toolbox,
+% fjerner 6. leddet etterpå før vi bruker verdiene til å posisjonere
+% robotarmen.
+arm_ik = SerialLink([L2, Link('revolute', 'd', 0.0823, 'a', 0, 'alpha', 0)], 'name', 'arm_ik', 'tool', SE3(0, 0, L_dyse));
+q_arm_ik0 = [q_arm 0];
+
+% figure; hold on;
+% arm.plot(q_arm, 'workspace', [-1 1 -1 1 -0.5 1.2],    'scale', 0.3)
 
 %% Kinematics model of the whole robotic system using Toolbox
 full = lift * arm;
 full.base = SE3(0, -2, 1.5);           % Hvor i verden er basen til robotarmen?
+full.tool = arm.tool;
 
 q = [q_lift q_arm];
-figure;
-full.teach(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
+figure; hold on;
+full.plot(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
 
 %% Demonstration of equivalence of the transformation matrix of the first four joints
-% syms t1 t2 d3 t4 real
-% 
-% q = [t1 t2 d3 t4 zeros(1,6)];
-% T04_tb = full.A(1:4, q).T;
-% 
-% c1 = cos(t1); s1 = sin(t1);
-% c2 = cos(t2); s2 = sin(t2);
-% c4 = cos(t4); s4 = sin(t4);
-% 
-% trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
-% 
-% result = simplify(T04_tb - trans_0_4);
-% vpa(result, 2)
+syms t1 t2 d3 t4 real
+
+q = [t1 t2 d3 t4 zeros(1,6)];
+T04_tb = full.A(1:4, q).T;
+
+c1 = cos(t1); s1 = sin(t1);
+c2 = cos(t2); s2 = sin(t2);
+c4 = cos(t4); s4 = sin(t4);
+
+trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
+
+result = simplify(T04_tb - trans_0_4);
+vpa(result, 2)
 
 %% Develop the inverse kinematics using Toolbox
 p = [3, 1.5, 8];        % Vilkårlig punkt på veggen
-T_mal = SE3(p) * SE3.Rx(-pi/2)      % End-effectoren peker mot veggen langs positiv y0
-full.ikine(T_mal)
+T_mal = SE3(p) * SE3.Rx(-pi/2);      % End-effectoren peker mot veggen langs positiv y0
+q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0);            % Bruker egen inverse-kinematics funksjon
 
 %% Sensor to robot command (camera detection → joint angles)
 h_c = 0.3;                                   % camera distance below frame 4 origin [m]
@@ -119,3 +122,28 @@ disp(['Dyse oppnådd:      ' num2str(T_check.t')])
 plot3(p_w(1), 0, p_w(3), 'r.', 'MarkerSize', 25);
 
 full.plot(q, 'workspace', [-2 12 -6 2 0 13], 'scale', 0.1);
+
+%% Invers kinematikk-funksjon (denne må stå nederst i scriptet)
+% Denne grovposisjonerer liften først, før den regner ut ikine for
+% robotarmen. På denne måten bruker vi liften til grovposisjonering, før vi
+% gjør selve vaskeoperasjonen med robotarmen.
+function q = ik_system(lift, arm_ik, base, T_mal, q0_arm)
+    % T_mal.t = målposisjonen til dysen
+    % T_mal.a = z-aksen til dysen, altså retningen strålen peker
+    % T_mal.t - 0.5 * T_mal.a = 0.5 meter bak dysen, der platen med
+    % robotarmen festet skal stå. 
+    % - base.t gjør punktet relativt til liftbasen i stedet for
+    % verdenskoordinater.
+
+    % Steg 1: grovposisjonering av lifen. Regnes ut ved hjelp av geometri
+    p = (T_mal.t - 0.5*T_mal.a) - base.t; 
+    q_lift = [atan2(p(2), p(1)), atan2(hypot(p(1), p(2)), -p(3)), norm(p)];
+    q_lift(4) = q_lift(2) - pi/2;
+
+    % Steg 2: invers kinematikk av robotarmen
+    % Bruker ikke verdien for ledd 6 her, siden det er et virtuelt ledd for
+    % å kunne bruke ikine-funksjonen
+    arm_ik.base = base * lift.fkine(q_lift);    % Plasserer robotarmen på platen (enden av liften) (i verdenskoordinater)
+    q6 = arm_ik.ikine(T_mal, 'q0', q0_arm);     % ikine-funksjonen regner ut robotarmens 6 leddvinkler for å sette dysen i T_mal.
+    q = [q_lift q6(1:5)];                       % Setter sammen verdiene. Dropper siste verdi, siden robotarmen har 5 ledd.
+end
