@@ -1,11 +1,44 @@
-%% Kinematics model of lift using Toolbox
+%% Clear the workspace 
 clear;
 clc;
 close all force;
 
+%% Konstanter
+% Geometri
+L_min = 3.6;                    % innskjøvet bomlengde [m]
+L_max = 15;                     % utskjøvet bomlengde [m]
+L_dyse = 0.15;                  % lengde på dysen [m]
+base_pos = [0 -2 1.5];          % liftbasen i verdenskoordinater [m]
+h_c = 0.3;                      % kameraets avstand under origo i frame 4 [m]
+
+% Dynamiske parametere, lift (verdier fra utregning)
+s = 3.6;                        % seksjonslengde [m]
+m1 = 40;                        % dreiekrans (anslag) [kg]
+m2 = 66.5;                      % seksjon 1 [kg]
+m3 = 201.8;                     % seksjon 2-5 + halve slangen [kg]
+y3 = 6.6;                       % tyngdepunkt bak tuppen [m]
+m_plate = 21;                   % plate + kamera + halve slangen (anslag) [kg]
+r_plate = [0 0 0];              % tyngdepunkt for platen i frame 4 [m]
+
+% Dynamiske parametere, UR5-inspirert arm (fra UR5-spesifikasjonen)
+m_ur = [3.7 8.393 2.33 1.219 1.219];
+r_ur = [0 -0.02561 0.00193;
+        0.2125 0 0.11336;
+        0.15 0 0.0265;
+        0 -0.0018 0.01634;
+        0 0.0018 0.01634];
+m6 = 0.1879;                    % UR5 ledd 6 (slås sammen med ledd 5) [kg]
+r6 = [0 0 0.0823 - 0.001159];   % tyngdepunkt ledd 6, i frame 5 [m]
+md = 3;                         % dysen [kg]
+rd = [0 0 0.0823 + L_dyse/2];   % tyngdepunkt dyse (midt på), i frame 5 [m]
+
+g = [0 0 9.81];                 % gravitasjon [m/s^2]
+
+%% Kinematics model of lift using Toolbox
+
 L(1) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
 L(2) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
-L(3) = Link('prismatic', 'theta', 0, 'a', 0, 'alpha', pi/2, 'qlim', [0 12]);
+L(3) = Link('prismatic', 'theta', 0, 'a', 0, 'alpha', pi/2, 'qlim', [L_min L_max]);
 L(4) = Link('revolute','d', 0,'a', 0,'alpha', -pi/2);
 
 lift = SerialLink(L, 'name', 'Lift');
@@ -15,8 +48,6 @@ q_lift = liftQ(0, 2*pi/3, 6);
 % lift.plot(q_lift, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.3);
 
 %% Kinematics model of robot arm using Toolbox
-
-L_dyse = 0.15; 
 
 L2(1) = Link('revolute', 'd', 0.089159, 'a', 0, 'alpha', pi/2);
 L2(2) = Link('revolute', 'd', 0, 'a', -0.425, 'alpha', 0);
@@ -37,8 +68,45 @@ q_arm_ik0 = [q_arm 0];
 
 %% Kinematics model of the whole robotic system using Toolbox
 full = lift * arm;
-full.base = SE3(0, -2, 1.5);           % Hvor i verden er basen til robotarmen?
+full.base = SE3(base_pos);         % Where the base of the robot arm is located in world coordinates
 full.tool = arm.tool;
+
+%% Dynamics of the whole robot
+% Lift
+% First revolute joint
+full.links(1).m = m1;
+full.links(1).r = [0 0 0];      
+
+% Section 1 of prismatic arm, along z2
+full.links(2).m = m2; 
+full.links(2).r = [0 0 s/2];    
+
+% Section 2-5 of prismatic arm, behind the lift's end
+full.links(3).m = m3;
+full.links(3).r = [0 -y3 0];    
+
+% Horizontal plate
+full.links(4).m = m_plate;
+full.links(4).r = r_plate;
+
+% UR5 inspired robot arm
+% Joint 6 and the nozzle are added to joint 5
+m5 = m_ur(5) + m6 + md;
+r_ur(5,:) = (m_ur(5) * r_ur(5,:) + m6*r6 + md*rd) / m5;
+m_ur(5) = m5;
+
+for k = 1:5
+    full.links(4+k).m = m_ur(k);
+    full.links(4+k).r = r_ur(k,:);
+end
+
+for k = 1:full.n
+    full.links(k).I = zeros(3);         % Assume ideal joints, no inertia
+end
+
+full.gravity = g;        % Gravitasjonskrefter på roboten
+
+full.dyn
 
 q = [q_lift q_arm];
 figure; hold on;
@@ -62,10 +130,9 @@ vpa(result, 2)
 %% Develop the inverse kinematics using Toolbox
 p = [3, 1.5, 8];        % Vilkårlig punkt på veggen
 T_mal = SE3(p) * SE3.Rx(-pi/2);      % End-effectoren peker mot veggen langs positiv y0
-q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0);            % Bruker egen inverse-kinematics funksjon
+q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0, L_min, L_max);           % Bruker egen inverse-kinematics funksjon
 
 %% Sensor to robot command (camera detection → joint angles)
-h_c = 0.3;                                   % camera distance below frame 4 origin [m]
 
 % 0T4 evaluated numerically at the current lift configuration
 t1 = q_lift(1); t2 = q_lift(2); d3 = q_lift(3); t4 = q_lift(4);
@@ -127,7 +194,7 @@ full.plot(q, 'workspace', [-2 12 -6 2 0 13], 'scale', 0.1);
 % Denne grovposisjonerer liften først, før den regner ut ikine for
 % robotarmen. På denne måten bruker vi liften til grovposisjonering, før vi
 % gjør selve vaskeoperasjonen med robotarmen.
-function q = ik_system(lift, arm_ik, base, T_mal, q0_arm)
+function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max)
     % T_mal.t = målposisjonen til dysen
     % T_mal.a = z-aksen til dysen, altså retningen strålen peker
     % T_mal.t - 0.5 * T_mal.a = 0.5 meter bak dysen, der platen med
@@ -137,7 +204,8 @@ function q = ik_system(lift, arm_ik, base, T_mal, q0_arm)
 
     % Steg 1: grovposisjonering av lifen. Regnes ut ved hjelp av geometri
     p = (T_mal.t - 0.5*T_mal.a) - base.t; 
-    q_lift = [atan2(p(2), p(1)), atan2(hypot(p(1), p(2)), -p(3)), norm(p)];
+    d3 = min(max(norm(p), L_min), L_max);   % begrenser til bommens lengde
+    q_lift = [atan2(p(2), p(1)), atan2(hypot(p(1), p(2)), -p(3)), d3];
     q_lift(4) = q_lift(2) - pi/2;
 
     % Steg 2: invers kinematikk av robotarmen
@@ -147,3 +215,4 @@ function q = ik_system(lift, arm_ik, base, T_mal, q0_arm)
     q6 = arm_ik.ikine(T_mal, 'q0', q0_arm);     % ikine-funksjonen regner ut robotarmens 6 leddvinkler for å sette dysen i T_mal.
     q = [q_lift q6(1:5)];                       % Setter sammen verdiene. Dropper siste verdi, siden robotarmen har 5 ledd.
 end
+Claude finished the response
