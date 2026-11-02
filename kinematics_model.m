@@ -17,8 +17,13 @@ m1 = 40;                        % dreiekrans (anslag) [kg]
 m2 = 66.5;                      % seksjon 1 [kg]
 m3 = 201.8;                     % seksjon 2-5 + halve slangen [kg]
 y3 = 6.6;                       % tyngdepunkt bak tuppen [m]
-m_plate = 21;                   % plate + kamera + halve slangen (anslag) [kg]
-r_plate = [0 0 0];              % tyngdepunkt for platen i frame 4 [m]
+m_plate = 10;                   % plate [kg]
+m_camera = 1;                   % kamera [kg]
+m_plate_hose = 10;              % antar at halve slangen sin vekt hviler på platen [kg]
+% Posisjoner i frame 4 (x4 peker opp, z4 horisontalt ut mot armen)
+r_plate_only = [0 0 -0.005];    % platen, sentrert om origo, armen på forsiden [m]
+r_camera = [-h_c 0 0];          % kameraet, h_c under origo [m]
+r_plate_hose = [0 0 -0.05];     % slangen kobles til bak platen [m]
 
 % Dynamiske parametere, UR5-inspirert arm (fra UR5-spesifikasjonen)
 m_ur = [3.7 8.393 2.33 1.219 1.219];
@@ -85,9 +90,11 @@ full.links(2).r = [0 0 s/2];
 full.links(3).m = m3;
 full.links(3).r = [0 -y3 0];    
 
-% Horizontal plate
-full.links(4).m = m_plate;
-full.links(4).r = r_plate;
+% Vertical plate: plate, camera and half the hose combined into one point mass
+m4 = m_plate + m_camera + m_plate_hose;
+r4 = (m_plate*r_plate_only + m_camera*r_camera + m_plate_hose*r_plate_hose) / m4;
+full.links(4).m = m4;
+full.links(4).r = r4;
 
 % UR5 inspired robot arm
 % Joint 6 and the nozzle are added to joint 5
@@ -107,6 +114,16 @@ end
 full.gravity = g;        % Gravitasjonskrefter på roboten
 
 full.dyn
+
+%% Kontroll av dynamikkmodellen
+q_hor = [liftQ(0, pi/2, L_max) q_arm];   % horisontal, helt utskjøvet bom
+tau_g = full.gravload(q_hor);
+disp(tau_g)
+
+% Håndregning: moment om ledd 2, med armen som punktmasse i tuppen
+m_arm = sum(m_ur);                       % inkluderer ledd 6 og dysen
+M0 = 9.81*(m2*s/2 + m3*(L_max - y3) + (m4 + m_arm)*L_max);
+fprintf('gravload ledd 2: %.0f Nm, håndregning: %.0f Nm\n', abs(tau_g(2)), M0)
 
 q = [q_lift q_arm];
 figure; hold on;
@@ -215,4 +232,3 @@ function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max)
     q6 = arm_ik.ikine(T_mal, 'q0', q0_arm);     % ikine-funksjonen regner ut robotarmens 6 leddvinkler for å sette dysen i T_mal.
     q = [q_lift q6(1:5)];                       % Setter sammen verdiene. Dropper siste verdi, siden robotarmen har 5 ledd.
 end
-Claude finished the response
