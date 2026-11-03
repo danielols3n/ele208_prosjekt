@@ -39,6 +39,9 @@ rd = [0 0 0.0823 + L_dyse/2];   % tyngdepunkt dyse (midt på), i frame 5 [m]
 
 g = [0 0 9.81];                 % gravitasjon [m/s^2]
 
+% Robotmodell (Puma560)
+mdl_puma560;
+
 %% Kinematics model of lift using Toolbox
 
 L(1) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
@@ -115,6 +118,15 @@ full.gravity = g;        % Gravitasjonskrefter på roboten
 
 full.dyn
 
+% For requirement 4.ii, så legger vi til G, Jm og B for joint 2 på
+% robotarmen (joint 6 på full)
+for k = 5:9                                  % robot arm joints
+    pk = k - 4;                              % samme joint nummer på P560
+    full.links(k).G  = 101;
+    full.links(k).Jm = p560.links(pk).Jm;
+    full.links(k).B  = p560.links(pk).B;
+end
+
 %% Kontroll av dynamikkmodellen
 q_hor = [liftQ(0, pi/2, L_max) q_arm];   % horisontal, helt utskjøvet bom
 tau_g = full.gravload(q_hor);
@@ -176,6 +188,141 @@ T_dirt = SE3(p_w(1), p_w(2) - 0.3, p_w(3)) * SE3.Rx(-pi/2);
 
 q0 = [q_lift q_arm];
 q = full.ikine(T_dirt, 'q0', q0);
+
+%% Joint dynamic model and demonstration of how to analyze the robot dynamics and transfer function
+q_str = [q_lift 0 0 0 0 0];
+joint_tf = full.jointdynamics(q_str);
+
+% Fokuserer videre på skulderleddet (ledd 2 på robotarm / ledd 6 på hele
+% roboten)
+% Henter ut transferfunksjonen til ledd 6. 
+s_ = tf('s');
+P_v = tf(joint_tf(6));           % moment -> hastighet. jointdynamics gir hastigheten
+P = P_v / s_;                    % Deler på s, får da vinkelen. Går fra moment til vinkel.
+
+% Leser ut J' og B'
+% Nevneren i P_v er J's + B', så de to koeffisientene som blir hentet ut er
+% J' og B'
+[~, den] = tfdata(P_v, 'v');
+J_str = den(1)                          % J' for strukket arm
+B = den(2)                              % B'
+
+% Finner polene
+% Polene forteller om systemet (her leddet) er stabilt
+pole(P)                 
+tau = J_str / B                         % tidskonstant [s]
+
+% Sjekker sprangresponsen, strukket mot bøyd arm
+% Lager samme modell for armen strukket ut og bøyd
+q_boy = [q_lift 0 0 pi/2 0 0];          % albuen bøyd 90 grader
+tf_b = full.jointdynamics(q_boy);
+P_b = tf(tf_b(6)) / s_;
+[~, den_b] = tfdata(P_b, 'v');
+J_boy = den_b(1);
+
+figure;
+step(P, P_b, 5);
+grid on;
+legend('Strukket', 'Bøyd', 'Location', 'northwest');
+title('Skulder, åpen sløyfe: konstant moment \rightarrow vinkel')
+
+% Gravitasjonsforstyrrelsen
+% Roterer skulderen gjennom alle vinkler med armen strukket, og regner ut
+% hvor mye tyngdekraften drar i den for hver vinkel
+q2v = linspace(-pi, pi, 73);            % skuldervinkel å teste
+tg = zeros(size(q2v));
+for k = 1:numel(q2v)
+    qk = q_str;
+    qk(6) = q2v(k);                     % endrer bare skulderen, ingen andre ledd
+    tau_k = full.gravload(qk);
+    tg(k) = tau_k(6);                   % moment på skulderen
+end
+
+tau_g_max = max(abs(tg))                % leddside [Nm]
+d_motor = tau_g_max / full.links(6).G   % gravitasjonsforstyrrelsen sett fra motoren [Nm]
+
+figure;
+plot(rad2deg(q2v), tg, 'LineWidth', 1.5)
+grid on;
+xlabel('Skuldervinkel [grader]')
+ylabel('/tau_g [Nm]')
+title('Gravitasjonsmoment på skulderen, strukket arm')
+
+%% Velocity controller (P + PI)
+% 1. Velg polen og regn ut Kv
+tau_i = 0.05;                           % tidskonstant for indre sløyfe [s]
+p_i = 1 / tau_i;                        % polen [rad/s]
+Kv = J_str * p_i - B;                   % regner ut Kv fra polen og tidligere utregnede verdier
+% Velger Ki slik at nullpunktet -Ki/Kv havner rundt -4
+Ki = 4 * Kv;
+
+% 2. Regulatoren
+C_P = Kv;
+C_PI = Kv + Ki/s_;
+
+% 3. Lukket sløyfe
+T_ref_P = feedback(C_P * P_v, 1);
+T_dist_P = -feedback(P_v, C_P);
+
+T_ref_PI = feedback(C_PI * P_v, 1);
+T_dist_PI = -feedback(P_v, C_PI);
+
+% 4. Simulering
+t      = 0:0.001:2;               % tidsvektor [s]
+w_ref  = 50 * ones(size(t));      % ønsket motorhastighet [rad/s]
+d      = d_motor * ones(size(t));     % tyngdekraften, konstant
+
+w_P = lsim(T_ref_P, w_ref, t) + lsim(T_dist_P, d, t);
+w_PI = lsim(T_ref_PI, w_ref, t) + lsim(T_dist_PI, d, t);
+
+% 5. Plot
+figure; plot(t, w_ref, 'w--', t, w_P, t, w_PI, 'LineWidth', 1.3); grid on
+legend('\omega^*', 'P', 'PI', 'Location', 'southeast')
+xlabel('t [s]'); ylabel('\omega [rad/s]')
+
+%% Posisjonsregulator (P)
+% Posisjonsregulatoren er en P-regulator
+% ts = 4/Kp => Kp = 4/ts, Ts < 2 sek => Kp > 2
+% Velger Kp = 3
+% Den indre sløyfen bør være 5-10 ganger raskere => p = -Kp = -3
+% Indre pol / ytre pol = 20/3 = 6-7 ganger raskere
+% Gir ts = 4/3 = 1.33 sek, som er under kravet om 2 sek. 
+
+Kp = 3;
+L_ytre = Kp * T_ref_PI / s_;                            % ytre sløyfeforsterkning
+T_pos = feedback(L_ytre, 1);                            % theta* -> theta
+T_pos_d = minreal((T_dist_PI / s_) / (1 + L_ytre));     % d -> theta
+
+G = full.links(6).G;
+t = 0:0.001:4;
+theta_ref = deg2rad(10) * G * ones(size(t));            % 10 grader sprang, omregnet til motorside
+d = d_motor * ones(size(t));
+
+theta = lsim(T_pos, theta_ref, t) + lsim(T_pos_d, d, t);
+theta_ledd = rad2deg(theta / G);                        % tilbake til leddvinkel i grader
+
+figure; plot(t, theta_ledd, 'LineWidth', 1.3); grid on; hold on
+yline(10, '--'); yline(11.5, ':', 'OS 15 %'); xline(2, ':', 't_s = 2 s')
+xlabel('t [s]'); ylabel('Leddvinkel [°]')
+title('Posisjonsregulator, skulder')
+
+info = stepinfo(theta_ledd, t, 10, 'SettlingTimeThreshold', 0.02)
+avvik = abs(10 - theta_ledd(end))
+
+% Sjekk av kommandert moment
+dt = t(2) - t(1);
+omega = gradient(theta, dt);                    % faktisk motorhastighet [rad/s]
+omega_ref = Kp * (theta_ref' - theta);          % ønsket hastighet fra ytre sløyfe
+e_omega = omega_ref - omega;                    % hastighetsavvik inn til PI
+tau_cmd = lsim(C_PI, e_omega, t);               % kommandert motormoment [Nm]
+
+tau_maks = max(abs(tau_cmd));
+
+figure; plot(t, tau_cmd, 'LineWidth', 1.3); grid on; hold on
+yline(0.9, '--', 'Momentgrense');
+yline(d_motor, ':', 'Holde mot tyngdekraften');
+xlabel('t [s]'); ylabel('\tau_{cmd} [Nm]')
+title('Kommandert motormoment, 10° sprang')
 
 %% Oppsett av workspace med vegg
 figure; hold on; axis equal; grid on
