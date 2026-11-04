@@ -1,0 +1,970 @@
+
+assert(exist('SerialLink','class') == 8, ...
+    'Peter Corke Robotics Toolbox for MATLAB is required.');
+
+motionStyle='cartesian';    
+basePosition=[-4 -2 1.5];           
+workingStandoff=0.75;              
+contactY=0;                        
+ur_d1=0.089159; ur_a2=-0.42500; ur_a3=-0.39225;
+ur_d4=0.10915; ur_d5=0.09465; 
+armPark=[0 -pi/2 pi/2 0 0];
+
+nSpots=20;                         
+randomSeed=7;                      
+patchWidth=0.50; patchHeight=0.50;
+lineSpacing=0.12;                  
+paneMargin=0.06;                   
+spotPlacement='spread';            
+
+
+windows=zeros(100,4);
+w=0;
+for iz=0:9
+    for ix=0:9
+        w=w+1; windows(w,:)=[ix iz 1 1];
+    end
+end
+
+
+fastMode=true;
+if fastMode
+    maxLiftIterations=65; maxArmIterations=45;
+    maxLiftSeeds=2; maxArmSeeds=2;
+else
+    maxLiftIterations=150; maxArmIterations=120;
+    maxLiftSeeds=3; maxArmSeeds=6;
+end
+
+positionTolerance=0.015;         
+minWallDistance=0.02;            
+maxWallDistance=0.25;            
+distanceOptions=[0.02 0.05 0.10 0.15 0.20 0.25];
+
+assert(all(distanceOptions>=minWallDistance-1e-10 & ...
+    distanceOptions<=maxWallDistance+1e-10), ...
+    'All distanceOptions must be between minWallDistance and maxWallDistance.');
+distanceOptions=unique(sort(distanceOptions));
+
+liftCartesianStep=0.20;          
+armCartesianStep=0.035;          
+maxCartesianSamples=2000;       
+dt=0.1;
+showAnimation=true; playbackPause=0.025; plotEvery=3;
+followRadius=1.45; exportCSV=true;
+showEntirePath=true;             
+retractDistance=0.30;             
+frameHalfWidth=0.018;             
+frameDepth=0.060;                 
+boomRadius=0.065;                
+armRadius=0.035;                 
+toolRadius=0.012;                
+safetyMargin=0.010;              
+checkGroundCollision=false;         
+sweepAngularStep=0.10;           
+sweepExtensionStep=0.10;         
+surfaceTolerance=0.015;          
+
+
+transferClearanceY=-1.30;       
+maxArmCollisionSeeds=6;       
+
+
+assert(nSpots==round(nSpots) && nSpots>=1,'nSpots must be positive integer.');
+assert(patchWidth>0 && patchHeight>0 && lineSpacing>0);
+assert(size(windows,2)==4 && ~isempty(windows),'windows must be Nx4.');
+assert(all(windows(:,3)>2*paneMargin) && all(windows(:,4)>2*paneMargin), ...
+    'Each pane must be larger than twice paneMargin.');
+assert(all(windows(:,1)>=0) && all(windows(:,2)>=0) && ...
+    all(windows(:,1)+windows(:,3)<=wallW+1e-9) && ...
+    all(windows(:,2)+windows(:,4)<=wallH+1e-9), ...
+    'All panes must fit inside the wall.');
+
+
+qlim=[-pi pi; 0 pi; 4 18; 0 pi; ...
+      -2*pi 2*pi; -2*pi 2*pi; -2*pi 2*pi; -2*pi 2*pi; -2*pi 2*pi];
+links(1)=Link([0 0 0 pi/2 0],'standard');
+links(2)=Link([0 0 0 pi/2 0],'standard');
+links(3)=Link([0 0 0 pi/2 1],'standard');
+links(4)=Link([0 0 0 -pi/2 0],'standard');
+links(5)=Link([0 ur_d1 0 pi/2 0],'standard');
+links(6)=Link([0 0 ur_a2 0 0],'standard');
+links(7)=Link([0 0 ur_a3 0 0],'standard');
+links(8)=Link([0 ur_d4 0 pi/2 0],'standard');
+links(9)=Link([0 ur_d5 0 -pi/2 0],'standard');
+links(4).offset=-pi/2;         
+for j=1:9, links(j).qlim=qlim(j,:); end
+robot=SerialLink(links,'name','Lift + UR5-5axis');
+robot.base=transl(basePosition);
+lift=SerialLink(links(1:4),'name','Lift');
+lift.base=transl(basePosition);
+lo=qlim([1 2 3 5 6 7 8 9],1)';
+hi=qlim([1 2 3 5 6 7 8 9],2)';
+
+cfg=struct('robot',robot,'lift',lift,'basePosition',basePosition, ...
+    'ur_d1',ur_d1,'ur_a2',ur_a2,'ur_a3',ur_a3,'ur_d4',ur_d4,'ur_d5',ur_d5, ...
+    'windows',windows,'wallW',wallW,'wallH',wallH, ...
+    'frameHalfWidth',frameHalfWidth,'frameDepth',frameDepth, ...
+    'boomRadius',boomRadius,'armRadius',armRadius, ...
+    'toolRadius',toolRadius,'safetyMargin',safetyMargin, ...
+    'checkGroundCollision',checkGroundCollision, ...
+    'retractDistance',retractDistance,'surfaceTolerance',surfaceTolerance, ...
+    'sweepAngularStep',sweepAngularStep,'sweepExtensionStep',sweepExtensionStep, ...
+    'lo',lo,'hi',hi,'positionTolerance',positionTolerance, ...
+    'maxLiftIterations',maxLiftIterations,'maxArmIterations',maxArmIterations, ...
+    'maxLiftSeeds',maxLiftSeeds,'maxArmSeeds',maxArmSeeds, ...
+    'liftCartesianStep',liftCartesianStep,'armCartesianStep',armCartesianStep, ...
+    'maxCartesianSamples',maxCartesianSamples,'dt',dt,'contactY',contactY, ...
+    'minWallDistance',minWallDistance,'maxWallDistance',maxWallDistance, ...
+    'distanceOptions',distanceOptions, ...
+    'transferClearanceY',transferClearanceY, ...
+    'maxArmCollisionSeeds',maxArmCollisionSeeds);
+
+
+
+rng(randomSeed);
+nWindows=size(windows,1);
+if strcmpi(spotPlacement,'spread')
+    paneID=repmat(randperm(nWindows)',ceil(nSpots/nWindows),1);
+    paneID=paneID(1:nSpots);
+elseif strcmpi(spotPlacement,'random')
+    paneID=randi(nWindows,nSpots,1);
+else
+    error('spotPlacement must be spread or random.');
+end
+spots=zeros(nSpots,2);             % [X Z]
+patches=zeros(nSpots,4);           % [minX maxX minZ maxZ]
+for k=1:nSpots
+    pane=windows(paneID(k),:);
+    xmin=pane(1)+paneMargin; xmax=pane(1)+pane(3)-paneMargin;
+    zmin=pane(2)+paneMargin; zmax=pane(2)+pane(4)-paneMargin;
+   
+    cx0=xmin+patchWidth/2; cx1=xmax-patchWidth/2;
+    cz0=zmin+patchHeight/2; cz1=zmax-patchHeight/2;
+    if cx0>cx1, cx0=(xmin+xmax)/2; cx1=cx0; end
+    if cz0>cz1, cz0=(zmin+zmax)/2; cz1=cz0; end
+    cx=cx0+(cx1-cx0)*rand;
+    cz=cz0+(cz1-cz0)*rand;
+    spots(k,:)=[cx cz];
+    patches(k,:)=[max(xmin,cx-patchWidth/2),min(xmax,cx+patchWidth/2), ...
+                   max(zmin,cz-patchHeight/2),min(zmax,cz+patchHeight/2)];
+end
+
+%% 4. ROUTE: NEAREST-NEIGHBOUR + 2-OPT
+% Route cost is planar distance between spot centers; not true joint time.
+order=nearestTwoOpt(spots,[basePosition(1) basePosition(3)]);
+orderedSpots=spots(order,:);
+routeDist=sum(sqrt(sum(diff([[basePosition(1) basePosition(3)];orderedSpots]).^2,2)));
+fprintf('Generated %d spots across %d panes; approximate wall route %.2f m.\n', ...
+    nSpots,nWindows,routeDist);
+
+%% 5. SHOW PANE LAYOUT AND PLANNED VISIT ORDER
+figure('Name','Window spots and visit order','Color','w'); hold on; grid on;
+rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
+for j=1:nWindows
+    rectangle('Position',windows(j,:),'EdgeColor',[0.55 0.67 0.78], ...
+        'FaceColor',[0.93 0.97 1]);
+end
+plot(orderedSpots(:,1),orderedSpots(:,2),'-o','Color',[0.15 0.35 0.85], ...
+    'LineWidth',1.5,'MarkerFaceColor',[1 0.55 0.10]);
+for k=1:nSpots
+    id=order(k); p=patches(id,:);
+    rectangle('Position',[p(1) p(3) p(2)-p(1) p(4)-p(3)], ...
+        'EdgeColor',[0.15 0.65 0.3],'LineStyle','--');
+    text(spots(id,1)+0.04,spots(id,2),num2str(k),'FontSize',8);
+end
+xlabel('X (m)'); ylabel('Z (m)'); title('Numbered visit order and local cleaning patches');
+axis equal; xlim([0 wallW]); ylim([0 wallH]);
+
+%% 6. COLLISION-CHECKED MOTION PLANNING
+% phase 1 = lift transfer; phase 2 = cleaning; phase 3 = approach;
+% phase 4 = retract; all trajectories saved ONLY if sweep tests pass.
+planningTimer=tic;
+trajectory=zeros(0,15);
+mountPath=zeros(0,6);
+complete=false(nSpots,1);
+usedWallDistance=nan(nSpots,1); % actual chosen tool-center distance (metres)
+failureReason=cell(nSpots,1);
+maxTipError=0; time=0;
+u=clamp([0 pi/2 4 armPark],lo,hi);
+% Check start configuration. Otherwise no motion may be trusted.
+[startSafe,startWhy]=collisionFree(u,cfg,0,false);
+if ~startSafe
+    error('Initial robot configuration is in collision: %s. Choose a valid start pose.',startWhy);
+end
+aborted=false;
+for visit=1:nSpots
+    spotID=order(visit); cx=spots(spotID,1); cz=spots(spotID,2);
+    % SAFE RETRACTION from previous window location, if necessary.
+    tip=posePosition(robot,fullQ(u));
+    if tip(2)>-retractDistance+surfaceTolerance
+        retreat=[tip(1);-retractDistance;tip(3)];
+        [chunk,ui,ti,reason]=moveArm(u,retreat,4,spotID,cfg,time,'cartesian',true);
+        if ~isempty(reason)
+            failureReason{spotID}=['Cannot retract before lift: ' reason];
+            aborted=true; break;
+        end
+        [trajectory,mountPath]=commitChunk(trajectory,mountPath,chunk,cfg);
+        u=ui; time=ti;
+    end
+    % Move mounting point between spots; hold the five small-arm angles.
+    [chunk,ui,ti,reason]=moveLift(u,[cx;-workingStandoff;cz], ...
+        spotID,cfg,time,motionStyle);
+    if ~isempty(reason)
+        failureReason{spotID}=['Lift transfer rejected: ' reason];
+        fprintf('Visit %d spot %d: %s\n',visit,spotID,failureReason{spotID});
+        % Stop instead of cascading through the remaining spots from an
+        % unchanged configuration. A new route requires replanning.
+        warning('Stopping after unsafe transfer. No further moves were committed.');
+        aborted=true; break;
+    end
+    [trajectory,mountPath]=commitChunk(trajectory,mountPath,chunk,cfg);
+    u=ui; time=ti;
+
+    p=patches(spotID,:);
+    raster=verticalRaster(p(1),p(2),p(3),p(4),lineSpacing);
+    % Go to first raster point at a clearance depth, THEN approach glass.
+    entry=[raster(1,1);-retractDistance;raster(1,2)];
+    [chunk,ui,ti,reason]=moveArm(u,entry,3,spotID,cfg,time,'cartesian',false);
+    if ~isempty(reason)
+        failureReason{spotID}=['Clearance approach rejected: ' reason];
+        fprintf('Spot %d: %s\n',spotID,failureReason{spotID});
+        continue;
+    end
+    [trajectory,mountPath]=commitChunk(trajectory,mountPath,chunk,cfg);
+    u=ui; time=ti;
+
+    % Try ALL specified wall-distance choices, closest first.
+    % Each trial is transactional: the entire approach, raster AND retract
+    % must pass IK plus swept collision checks before any trial is saved.
+    % A failed trial leaves the robot at the safe clearance entry pose.
+    entryU=u;
+    entryTime=time;
+    reasons=cell(numel(distanceOptions),1);
+    for depthIndex=1:numel(distanceOptions)
+        depth=distanceOptions(depthIndex);
+        trialU=entryU; trialT=entryTime;
+        trialChunk=zeros(0,15);
+        goal=[raster(1,1);contactY-depth;raster(1,2)];
+        [part,newU,newT,reason]=moveArm(trialU,goal,3,spotID,cfg, ...
+            trialT,'cartesian',true,paneID(spotID));
+        if ~isempty(reason)
+            reasons{depthIndex}=sprintf('%.2f m approach: %s',depth,reason);
+            continue;
+        end
+        trialChunk=[trialChunk;part];
+        trialU=newU; trialT=newT;
+        trialOK=true;
+        for seg=2:size(raster,1)
+            goal=[raster(seg,1);contactY-depth;raster(seg,2)];
+            [part,newU,newT,reason]=moveArm(trialU,goal,2,spotID,cfg, ...
+                trialT,motionStyle,true,paneID(spotID));
+            if ~isempty(reason)
+                reasons{depthIndex}=sprintf('%.2f m stroke %d: %s', ...
+                    depth,seg,reason);
+                trialOK=false;
+                break;
+            end
+            trialChunk=[trialChunk;part];
+            trialU=newU; trialT=newT;
+        end
+        if ~trialOK, continue; end
+
+        % Finish with a checked retract from the chosen cleaning depth.
+        tip=posePosition(robot,fullQ(trialU));
+        retreat=[tip(1);-retractDistance;tip(3)];
+        [part,newU,newT,reason]=moveArm(trialU,retreat,4,spotID,cfg, ...
+            trialT,'cartesian',true,paneID(spotID));
+        if ~isempty(reason)
+            reasons{depthIndex}=sprintf('%.2f m retract: %s',depth,reason);
+            continue;
+        end
+        trialChunk=[trialChunk;part];
+        trialU=newU; trialT=newT;
+
+        % Entire candidate has passed: commit once, never a partial patch.
+        [trajectory,mountPath]=commitChunk(trajectory,mountPath,trialChunk,cfg);
+        u=trialU; time=trialT;
+        usedWallDistance(spotID)=depth;
+        complete(spotID)=true;
+        fprintf('Spot %d solved at %.2f m from wall.\n',spotID,depth);
+        break;
+    end
+    if ~complete(spotID)
+        failureReason{spotID}=strjoin(reasons(~cellfun('isempty',reasons)),' | ');
+        fprintf('Spot %d: No full collision-free cleaning sequence found at any wall distance.\n',spotID);
+        % Remain at the verified entry configuration; no failed trial was committed.
+        u=entryU; time=entryTime;
+    end
+    fprintf('Visit %d/%d, spot %d: %s\n',visit,nSpots,spotID, ...
+        ternary(complete(spotID),'COLLISION-CHECKED COMPLETE','UNSOLVED'));
+    if aborted, break; end
+end
+fprintf('Planning %.2f s; collision-checked completed %d/%d spots.\n', ...
+    toc(planningTimer),sum(complete),nSpots);
+if aborted
+    warning('Planning stopped: tool could not be safely retracted. No unsafe motion was appended.');
+end
+% Plot every ACTUALLY solved Cartesian tool position and all transfers.
+% NaN delimiters stop lines from drawing across failed / skipped spots.
+figure('Name','FULL solved Cartesian path on windows','Color','w');
+hold on; grid on; axis equal;
+rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
+for j=1:nWindows
+    rectangle('Position',windows(j,:),'EdgeColor',[.70 .75 .80]);
+end
+plot(orderedSpots(:,1),orderedSpots(:,2),':','Color',[.6 .6 .6], ...
+    'LineWidth',1,'DisplayName','Visit order (nominal)');
+if ~isempty(trajectory)
+    plot(trajectory(:,13),trajectory(:,15),'-','Color',[.76 .76 .76], ...
+        'LineWidth',.6,'DisplayName','Entire sampled tool trace');
+    plotPhasePath2D(trajectory,1,[.9 .4 .1],1.3,'Lift transfer (tool projection)');
+    plotPhasePath2D(trajectory,2,[.02 .54 .26],1.6,'Cartesian cleaning strokes');
+    plotPhasePath2D(trajectory,3,[.55 .25 .80],1.3,'Tool approach');
+    plotPhasePath2D(trajectory,4,[.65 .17 .55],1.3,'Tool retract');
+end
+scatter(spots(:,1),spots(:,2),32,[.7 .1 .1],'filled', ...
+    'DisplayName','Target spots');
+for k=1:nSpots
+    text(spots(order(k),1)+.045,spots(order(k),2),num2str(k),'FontSize',8);
+end
+xlim([0 wallW]); ylim([0 wallH]);
+xlabel('Wall X (m)'); ylabel('Wall Z (m)');
+title('Validated sampled route: transfers, approaches, retracts and cleaning');
+legend('Location','eastoutside');
+
+% A second plot shows the actual 3D tool trajectory as well as the lift
+% mount position, including the depth dimension in front of the wall.
+figure('Name','Full 3D Cartesian paths','Color','w'); hold on; grid on;
+if ~isempty(trajectory)
+    plot3(trajectory(:,13),trajectory(:,14),trajectory(:,15), ...
+        '-','Color',[.76 .76 .76],'LineWidth',.6, ...
+        'DisplayName','Entire sampled tool trace');
+    plotPhasePath3D(trajectory,1,[.9 .4 .1],1.2,'Tool during lift transfer');
+    plotPhasePath3D(trajectory,2,[.02 .54 .26],1.6,'Tool during cleaning');
+    plotPhasePath3D(trajectory,3,[.55 .25 .80],1.3,'Tool approach');
+    plotPhasePath3D(trajectory,4,[.65 .17 .55],1.3,'Tool retract');
+end
+if ~isempty(mountPath)
+    plot3(mountPath(:,4),mountPath(:,5),mountPath(:,6), ...
+        'Color',[.25 .45 .85],'LineWidth',1.0,'DisplayName','Lift mount path');
+end
+xlabel('X (m)');ylabel('Y (m)');zlabel('Z (m)');axis equal;
+view(40,20); legend('Location','best');
+title('Collision-checked FK trace of tool and lift mount');
+
+%% 7. RESULTS AND CSV OUTPUTS
+figure('Name','Spot cleaning result','Color','w'); hold on; grid on;
+rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
+for j=1:nWindows
+    rectangle('Position',windows(j,:),'EdgeColor',[0.65 0.75 0.83]);
+end
+for k=1:nSpots
+    p=patches(k,:);
+    if complete(k), c=[0.80 0.94 0.80]; else, c=[1 0.78 0.78]; end
+    rectangle('Position',[p(1) p(3) p(2)-p(1) p(4)-p(3)], ...
+        'FaceColor',c,'EdgeColor',[0.35 0.5 0.35]);
+end
+if ~isempty(trajectory)
+    rows=trajectory(:,2)==2;
+    plot(trajectory(rows,13),trajectory(rows,15),'.','Color',[0.1 0.3 0.8], ...
+        'MarkerSize',5);
+end
+plot(orderedSpots(:,1),orderedSpots(:,2),'k.');
+axis equal; xlim([0 wallW]); ylim([0 wallH]);
+xlabel('X (m)'); ylabel('Z (m)');
+title(sprintf('Planned cleaning: %d/%d patches solved (red=incomplete)',sum(complete),nSpots));
+for k=1:nSpots
+    if complete(k)
+        text(spots(k,1)+0.06,spots(k,2),sprintf('%.0f cm',100*usedWallDistance(k)), ...
+            'FontSize',7,'Color',[0.05 0.4 0.12]);
+    end
+end
+
+if exportCSV
+    visitNumber=zeros(nSpots,1); visitNumber(order)=1:nSpots;
+    spotTable=table((1:nSpots)',paneID,visitNumber,spots(:,1),spots(:,2), ...
+        patches(:,1),patches(:,2),patches(:,3),patches(:,4),complete, ...
+        usedWallDistance, ...
+        failureReason,'VariableNames', ...
+        {'spot_id','pane_id','visit_order','x_m','z_m','x_min','x_max', ...
+        'z_min','z_max','planned_complete','wall_distance_m','failure_reason'});
+    writetable(spotTable,'window_spots_route_collision.csv');
+    if ~isempty(mountPath)
+        writetable(array2table(mountPath,'VariableNames', ...
+          {'time_s','phase','spot_id','mount_x_m','mount_y_m','mount_z_m'}), ...
+          'window_lift_mount_collision.csv');
+    end
+    if ~isempty(trajectory)
+        names={'time_s','phase','spot_id','q1_rad','q2_rad','d3_m', ...
+            'q4_rad','q5_rad','q6_rad','q7_rad','q8_rad','q9_rad', ...
+            'tool_x_m','tool_y_m','tool_z_m'};
+        writetable(array2table(trajectory,'VariableNames',names), ...
+            'window_spot_collision_trajectory.csv');
+    end
+end
+
+if showAnimation && ~isempty(trajectory)
+    playRobotViews(trajectory,basePosition,ur_d1,ur_a2,ur_a3,ur_d4,ur_d5, ...
+        wallW,wallH,plotEvery,playbackPause,followRadius,showEntirePath);
+end
+
+%% HELPER FUNCTIONS FOR CARTESIAN PATH MARKING
+function points=cartesianLine(p0,p1,step,maxSamples)
+    p0=p0(:); p1=p1(:);
+    count=max(1,ceil(norm(p1-p0)/step));
+    assert(count<=maxSamples,'Cartesian segment too long. Increase step.');
+    alpha=(1:count)'/count;
+    points=p0'+alpha*(p1-p0)'; % EXCLUDES p0; INCLUDES p1
+end
+
+function plotPhasePath2D(traj,phase,color,width,name)
+    inds=find(traj(:,2)==phase);
+    if isempty(inds),return;end
+    starts=[true;diff(inds)>1 | diff(traj(inds,3))~=0];
+    x=traj(inds,13); z=traj(inds,15);
+    breaks=starts & ((1:numel(inds))'>1);
+    x(breaks)=NaN; z(breaks)=NaN;
+    plot(x,z,'Color',color,'LineWidth',width,'DisplayName',name);
+end
+
+function plotPhasePath3D(traj,phase,color,width,name)
+    inds=find(traj(:,2)==phase);
+    if isempty(inds),return;end
+    x=traj(inds,13); y=traj(inds,14); z=traj(inds,15);
+    breaks=[false;diff(inds)>1 | diff(traj(inds,3))~=0];
+    x(breaks)=NaN; y(breaks)=NaN; z(breaks)=NaN;
+    plot3(x,y,z,'Color',color,'LineWidth',width,'DisplayName',name);
+end
+
+function plotPhasePath3DAxes(ax,traj,phase,color,width)
+    inds=find(traj(:,2)==phase);
+    if isempty(inds),return;end
+    x=traj(inds,13); y=traj(inds,14); z=traj(inds,15);
+    breaks=[false;diff(inds)>1 | diff(traj(inds,3))~=0];
+    x(breaks)=NaN; y(breaks)=NaN; z(breaks)=NaN;
+    plot3(ax,x,y,z,'Color',color,'LineWidth',width);
+end
+
+%% LOCAL FUNCTIONS
+function out=ternary(cond,a,b)
+    if cond, out=a; else, out=b; end
+end
+
+function out = clamp(v,lo,hi)
+    out = min(max(v,lo),hi);
+end
+
+function q = fullQ(u)
+    % u = [q1 q2 d3 UR5_J1 UR5_J2 UR5_J3 UR5_J4 UR5_J5].
+    % q4=q2 (offset -pi/2 is included in Link 4).
+    q=[u(1),u(2),u(3),u(2),u(4:8)];
+end
+
+function p = posePosition(robot,q)
+    T=robot.fkine(q);
+    % Modern Peter Corke RTB returns an SE3; some versions return 4x4.
+    if isa(T,'SE3'), M=T.T; else, M=double(T); end
+    p=M(1:3,4);
+end
+
+function [v,err,ok] = solveLiftIK(lift,target,seeds,lo,hi,maxIter,tol,maxSeeds)
+    % qLift = [q1 q2 d3 q2]; fourth joint follows second.
+    bestErr=Inf; v=clamp(seeds(1,:),lo,hi);
+    for s=1:min(size(seeds,1),maxSeeds)
+        z=clamp(seeds(s,:),lo,hi);
+        for i=1:maxIter
+            q=[z(1),z(2),z(3),z(2)];
+            p=posePosition(lift,q);
+            e=target-p;
+            if norm(e)<tol, break; end
+            J=lift.jacob0(q);
+            J3=[J(1:3,1),J(1:3,2)+J(1:3,4),J(1:3,3)];
+            lambda=0.08;
+            dz=J3' * ((J3*J3'+lambda^2*eye(3))\e);
+            % Limit per-iteration moves (radians for rotations, m for d3).
+            dz = max(min(dz,[0.15;0.15;0.30]),[-0.15;-0.15;-0.30]);
+            z=clamp(z+dz',lo,hi);
+        end
+        errNow=norm(target-posePosition(lift,[z(1:3),z(2)]));
+        if errNow<bestErr, bestErr=errNow; v=z; end
+        if errNow<tol, break; end
+    end
+    err=bestErr; ok=(err<tol);
+end
+
+function [v,err,ok] = solveArmIK(robot,liftU,previous,target,lo,hi,maxIter,tol,maxSeeds)
+
+    seeds = [previous; ...
+             0 -pi/2 pi/2 0 0; ...
+             0 -pi/3 pi/2 -pi/2 0; ...
+             0 -2*pi/3 pi/3 0 pi/2; ...
+             pi/2 -pi/2 pi/2 0 0; ...
+             -pi/2 -pi/2 pi/2 0 0];
+    bestErr=Inf; v=previous;
+    for s=1:min(size(seeds,1),maxSeeds)
+        z=clamp(seeds(s,:),lo,hi);
+        for i=1:maxIter
+            q=fullQ([liftU,z]);
+            p=posePosition(robot,q);
+            e=target-p;
+            if norm(e)<tol, break; end
+            J=robot.jacob0(q);
+            J5=J(1:3,5:9);
+            lambda=0.06;
+            dz=J5'*((J5*J5'+lambda^2*eye(3))\e);
+            dz=max(min(dz,0.18),-0.18);
+            z=clamp(z+dz',lo,hi);
+        end
+        errNow=norm(target-posePosition(robot,fullQ([liftU,z])));
+        if errNow<bestErr, bestErr=errNow; v=z; end
+        if errNow<tol, break; end
+    end
+    err=bestErr; ok=(err<tol);
+end
+
+function path=verticalRaster(x0,x1,z0,z1,pitch)
+    % Vertical up/down zig-zag INSIDE the spot's clipped cleaning rectangle.
+    nCols=max(2,ceil((x1-x0)/pitch)+1);
+    xs=linspace(x0,x1,nCols);
+    path=zeros(2*nCols,2);
+    for k=1:nCols
+        ii=2*k-1;
+        if mod(k,2)==1
+            path(ii:ii+1,:)=[xs(k) z0; xs(k) z1];
+        else
+            path(ii:ii+1,:)=[xs(k) z1; xs(k) z0];
+        end
+    end
+end
+
+function order=nearestTwoOpt(points,startAt)
+    n=size(points,1);
+    remaining=true(n,1); order=zeros(n,1); last=startAt;
+    for k=1:n
+        distances=sum((points-last).^2,2);
+        distances(~remaining)=Inf;
+        [~,idx]=min(distances);
+        order(k)=idx;
+        remaining(idx)=false;
+        last=points(idx,:);
+    end
+    if n>2
+        for pass=1:8
+            improved=false;
+            for a=1:n-1
+                for b=a+1:n
+                    if a==1, before=startAt; else, before=points(order(a-1),:); end
+                    if b==n
+                        old=norm(before-points(order(a),:));
+                        new=norm(before-points(order(b),:));
+                    else
+                        after=points(order(b+1),:);
+                        old=norm(before-points(order(a),:)) + ...
+                            norm(points(order(b),:)-after);
+                        new=norm(before-points(order(b),:)) + ...
+                            norm(points(order(a),:)-after);
+                    end
+                    if new < old-1e-9
+                        order(a:b)=flipud(order(a:b));
+                        improved=true;
+                    end
+                end
+            end
+            if ~improved, break; end
+        end
+    end
+end
+
+function [data,t] = addSample(data,t,dt,phase,tile,robot,u)
+    q=fullQ(u);
+    p=posePosition(robot,q);
+    t=t+dt;
+    data(end+1,:)=[t,phase,tile,q,p'];
+end
+
+
+function playRobotViews(trajectory,basePosition,ur_d1,ur_a2,ur_a3,ur_d4,ur_d5, ...
+    wallW,wallH,plotEvery,playbackPause,followRadius,showEntirePath)
+
+    fig=figure('Color','w','Name','Window cleaner | lift vs arm', ...
+        'Position',[100 100 1330 620]);
+    ax1=subplot(1,2,1,'Parent',fig);
+    ax2=subplot(1,2,2,'Parent',fig);
+    setupView(ax1,wallW,wallH,'Full wall and lift');
+    setupView(ax2,wallW,wallH,'Cleaning arm (tracking close-up)');
+
+    axesList=[ax1,ax2];
+    liftLines=gobjects(1,2); armLines=gobjects(1,2);
+    mounts=gobjects(1,2); tools=gobjects(1,2);
+    joints=gobjects(1,2); tracks=gobjects(1,2);
+    for v=1:2
+        ax=axesList(v);
+        liftLines(v)=plot3(ax,nan,nan,nan,'-','Color',[0.63 0.67 0.72], ...
+            'LineWidth',1.6); 
+        armLines(v)=plot3(ax,nan,nan,nan,'-o', ...
+            'Color',[0.03 0.43 0.80],'MarkerFaceColor',[0.12 0.65 0.94], ...
+            'MarkerEdgeColor',[0.01 0.23 0.50], ...
+            'LineWidth',3,'MarkerSize',5);
+        mounts(v)=plot3(ax,nan,nan,nan,'s','Color',[0.8 0.35 0.08], ...
+            'MarkerFaceColor',[1 0.65 0.2],'MarkerSize',8);
+        tools(v)=plot3(ax,nan,nan,nan,'p','Color',[0 0.45 0.19], ...
+            'MarkerFaceColor',[0.19 0.82 0.35],'MarkerSize',12);
+        joints(v)=plot3(ax,basePosition(1),basePosition(2),basePosition(3), ...
+            'ks','MarkerFaceColor',[0.3 0.3 0.3],'MarkerSize',7);
+        tracks(v)=plot3(ax,nan,nan,nan,'-','Color',[0.02 0.70 0.36], ...
+            'LineWidth',1.1);
+    end
+
+    text(ax1,basePosition(1),basePosition(2),basePosition(3)-0.25, ...
+        'Lift base','FontSize',9,'HorizontalAlignment','center');
+
+
+    cleaning=trajectory(:,2)==2;
+    plot3(ax1,trajectory(cleaning,13),trajectory(cleaning,14), ...
+        trajectory(cleaning,15),'.','Color',[0.62 0.82 0.68], ...
+        'MarkerSize',2);
+    frameIds=unique([1:plotEvery:size(trajectory,1),size(trajectory,1)]);
+
+    if showEntirePath
+        plotPhasePath3DAxes(ax1,trajectory,1,[.9 .4 .1],1.0);
+        plotPhasePath3DAxes(ax1,trajectory,2,[.02 .54 .26],1.0);
+        plotPhasePath3DAxes(ax1,trajectory,3,[.55 .25 .80],1.0);
+        plotPhasePath3DAxes(ax1,trajectory,4,[.65 .17 .55],1.0);
+    end
+    trace=zeros(0,3);
+    prevTile=-1;
+    for i=frameIds
+        if ~ishandle(fig), return; end
+        q=trajectory(i,4:12);
+        P=visualFramePoints(q,basePosition,ur_d1,ur_a2,ur_a3,ur_d4,ur_d5);
+        mount=P(:,5);      
+        arm=P(:,5:10);    
+        tool=P(:,10);
+        currentTile=trajectory(i,3);
+        if currentTile~=prevTile
+            trace=zeros(0,3);
+            prevTile=currentTile;
+        end
+        if trajectory(i,2)==2
+            trace(end+1,:)=tool'; %#ok<AGROW>
+        end
+        for v=1:2
+
+            set(liftLines(v),'XData',[P(1,1),mount(1)], ...
+                'YData',[P(2,1),mount(2)],'ZData',[P(3,1),mount(3)]);
+            set(armLines(v),'XData',arm(1,:),'YData',arm(2,:), ...
+                'ZData',arm(3,:));
+            set(mounts(v),'XData',mount(1),'YData',mount(2),'ZData',mount(3));
+            set(tools(v),'XData',tool(1),'YData',tool(2),'ZData',tool(3));
+            set(tracks(v),'XData',trace(:,1),'YData',trace(:,2), ...
+                'ZData',trace(:,3));
+        end
+
+        xlim(ax2,mount(1)+[-followRadius,followRadius]);
+        ylim(ax2,mount(2)+[-followRadius,followRadius]);
+        zlim(ax2,mount(3)+[-followRadius,followRadius]);
+        phaseNames={'Lift transfer (checked)','Cleaning (checked)','Approach (checked)','Retract (checked)'};
+        phase=trajectory(i,2);
+        title(ax2,sprintf('Spot %d | %s | %.1f s',currentTile, ...
+            phaseNames{phase},trajectory(i,1)));
+        drawnow limitrate;
+        if playbackPause>0, pause(playbackPause); end
+    end
+end
+
+function setupView(ax,wallW,wallH,heading)
+    hold(ax,'on'); grid(ax,'on'); axis(ax,'equal');
+    xlabel(ax,'Wall X (m)'); ylabel(ax,'Depth Y (m)');
+    zlabel(ax,'Height Z (m)'); title(ax,heading);
+    view(ax,37,18);
+
+    surf(ax,[0 wallW;0 wallW],[0 0;0 0], ...
+        [0 0;wallH wallH], 'FaceColor',[0.72 0.85 0.96], ...
+        'FaceAlpha',0.13,'EdgeColor','none');
+    plot3(ax,[0 wallW wallW 0 0],zeros(1,5), ...
+        [0 0 wallH wallH 0],'k-','LineWidth',1.2);
+    if contains(heading,'Full')
+        xlim(ax,[-5 wallW+1]); ylim(ax,[-5 2]); zlim(ax,[-1 wallH+2]);
+    end
+end
+
+function P=visualFramePoints(q,basePosition,ur_d1,ur_a2,ur_a3,ur_d4,ur_d5)
+
+    theta=[q(1),q(2),0,q(4)-pi/2,q(5),q(6),q(7),q(8),q(9)];
+    d=[0,0,q(3),0,ur_d1,0,0,ur_d4,ur_d5];
+    a=[0,0,0,0,0,ur_a2,ur_a3,0,0];
+    alpha=[pi/2,pi/2,pi/2,-pi/2,pi/2,0,0,pi/2,-pi/2];
+    T=eye(4); T(1:3,4)=basePosition(:);
+    P=zeros(3,10); P(:,1)=T(1:3,4);
+    for j=1:9
+        ct=cos(theta(j)); st=sin(theta(j));
+        ca=cos(alpha(j)); sa=sin(alpha(j));
+        A=[ct,-st*ca, st*sa,a(j)*ct; ...
+           st, ct*ca,-ct*sa,a(j)*st; ...
+            0,    sa,    ca,   d(j); ...
+            0,     0,     0,      1];
+        T=T*A;
+        P(:,j+1)=T(1:3,4);
+    end
+end
+
+
+
+function [traj,mountPath]=commitChunk(traj,mountPath,chunk,cfg)
+    if isempty(chunk),return;end
+    traj=[traj;chunk]; %#ok<AGROW>
+    for i=1:size(chunk,1)
+        q=chunk(i,4:12); u=[q(1:3),q(5:9)];
+        p=posePosition(cfg.lift,[u(1:3),u(2)]);
+        mountPath(end+1,:)=[chunk(i,1:3),p']; %#ok<AGROW>
+    end
+end
+
+function [chunk,nextU,t,reason]=moveLift(u,mountGoal,id,cfg,t,motionStyle)
+
+    [chunk,nextU,t,reason]=moveLiftDirect(u,mountGoal,id,cfg,t,motionStyle);
+    if isempty(reason),return;end
+    directReason=reason;
+    p0=posePosition(cfg.lift,[u(1:3),u(2)]);
+    ySafe=min([cfg.transferClearanceY,p0(2),mountGoal(2)]);
+    goals={[p0(1);ySafe;p0(3)], ...
+           [mountGoal(1);ySafe;mountGoal(3)], mountGoal(:)};
+    testU=u; testT=t; testChunk=zeros(0,15);
+    for j=1:numel(goals)
+        if norm(goals{j}-posePosition(cfg.lift,[testU(1:3),testU(2)]))<cfg.positionTolerance
+            continue;
+        end
+        [part,newU,newT,stageReason]=moveLiftDirect( ...
+            testU,goals{j},id,cfg,testT,motionStyle);
+        if ~isempty(stageReason)
+            chunk=zeros(0,15);nextU=u;
+            reason=sprintf('direct: %s | clearance stage %d: %s', ...
+                directReason,j,stageReason);
+            return;
+        end
+        testChunk=[testChunk;part]; %#ok<AGROW>
+        testU=newU;testT=newT;
+    end
+    chunk=testChunk;nextU=testU;t=testT;reason='';
+end
+
+function [chunk,nextU,t,reason]=moveLiftDirect(u,mountGoal,id,cfg,t,motionStyle)
+    chunk=zeros(0,15); nextU=u; reason='';
+    p0=posePosition(cfg.lift,[u(1:3),u(2)]);
+    if strcmpi(motionStyle,'cartesian')
+        targets=cartesianLine(p0,mountGoal,cfg.liftCartesianStep,cfg.maxCartesianSamples);
+    else
+        targets=mountGoal(:)';
+    end
+    for k=1:size(targets,1)
+        target=targets(k,:)'; d=target-cfg.basePosition(:);
+        seeds=[nextU(1:3); atan2(d(2),d(1)),pi/2,norm(d); ...
+            0,3*pi/4,norm(d)];
+        [liftU,err,ok]=solveLiftIK(cfg.lift,target,seeds, ...
+            cfg.lo(1:3),cfg.hi(1:3),cfg.maxLiftIterations, ...
+            cfg.positionTolerance,cfg.maxLiftSeeds);
+        if ~ok
+            reason=sprintf('IK failed at lift waypoint %d (%.3f m)',k,err); return;
+        end
+        candidate=[liftU,nextU(4:8)];
+        [ok,why]=sweptSafe(nextU,candidate,cfg,0,false);
+        if ~ok
+            reason=sprintf('lift sweep %d: %s',k,why); return;
+        end
+
+        n=numberSweeps(nextU,candidate,cfg);
+        for s=1:n
+            us=nextU+(candidate-nextU)*(s/n);
+            [chunk,t]=addSample(chunk,t,cfg.dt,1,id,cfg.robot,us);
+        end
+        nextU=candidate;
+    end
+end
+
+function [chunk,nextU,t,reason]=moveArm(u,goal,phase,id,cfg,t,motionStyle,allowContact,paneID)
+    if nargin<9,paneID=0;end
+    chunk=zeros(0,15); nextU=u; reason='';
+    start=posePosition(cfg.robot,fullQ(u));
+    if strcmpi(motionStyle,'cartesian')
+        targets=cartesianLine(start,goal,cfg.armCartesianStep,cfg.maxCartesianSamples);
+    else
+        targets=goal(:)';
+    end
+    for k=1:size(targets,1)
+        target=targets(k,:)';
+
+        trials=[nextU(4:8); ...
+                0 -pi/2 pi/2 0 0; ...
+                0 -pi/3 pi/2 -pi/2 0; ...
+                0 -2*pi/3 pi/3 0 pi/2; ...
+                pi/2 -pi/2 pi/2 0 0; ...
+                -pi/2 -pi/2 pi/2 0 0];
+        ok=false; why='no IK solution'; err=Inf;
+        for attempt=1:min(cfg.maxArmCollisionSeeds,size(trials,1))
+            [armU,trialErr,ikOK]=solveArmIK(cfg.robot,nextU(1:3), ...
+                trials(attempt,:),target,cfg.lo(4:8),cfg.hi(4:8), ...
+                cfg.maxArmIterations,cfg.positionTolerance,1);
+            err=min(err,trialErr);
+            if ~ikOK,continue;end
+            candidate=[nextU(1:3),armU];
+            [ok,why]=sweptSafe(nextU,candidate,cfg,paneID,allowContact);
+            if ok,break;end
+        end
+        if ~ok
+            reason=sprintf('arm waypoint %d rejected after %d seeds: %s (IK error %.3f m)', ...
+                k,min(cfg.maxArmCollisionSeeds,size(trials,1)),why,err);
+            return;
+        end
+        n=numberSweeps(nextU,candidate,cfg);
+        for s=1:n
+            us=nextU+(candidate-nextU)*(s/n);
+            if phase==2
+                tip=posePosition(cfg.robot,fullQ(us));
+                if abs(tip(2)-goal(2))>cfg.surfaceTolerance
+                    reason='joint interpolation departed from intended wall standoff';
+                    return;
+                end
+            end
+            [chunk,t]=addSample(chunk,t,cfg.dt,phase,id,cfg.robot,us);
+        end
+        nextU=candidate;
+    end
+end
+
+function n=numberSweeps(u0,u1,cfg)
+    delta=abs(u1-u0);
+    delta(3)=0;
+    n=max([1,ceil(max(delta)/cfg.sweepAngularStep), ...
+        ceil(abs(u1(3)-u0(3))/cfg.sweepExtensionStep)]);
+end
+
+function [ok,why]=sweptSafe(u0,u1,cfg,paneID,contactAllowed)
+    n=numberSweeps(u0,u1,cfg);
+    ok=true; why='';
+    for k=0:n
+        u=u0+(u1-u0)*(k/n);
+        [ok,why]=collisionFree(u,cfg,paneID,contactAllowed);
+        if ~ok
+            why=sprintf('sample %d/%d: %s',k,n,why); return;
+        end
+    end
+end
+
+function [ok,why]=collisionFree(u,cfg,paneID,contactAllowed)
+
+    ok=false; why='';
+    if any(u<cfg.lo-1e-8) || any(u>cfg.hi+1e-8)
+        why='Joint limit'; return;
+    end
+    q=fullQ(u);
+    P=visualFramePoints(q,cfg.basePosition,cfg.ur_d1,cfg.ur_a2, ...
+        cfg.ur_a3,cfg.ur_d4,cfg.ur_d5);
+
+    endpoints=zeros(3,2,6);
+    endpoints(:,:,1)=[P(:,1),P(:,5)];
+    for j=1:5
+        endpoints(:,:,j+1)=[P(:,4+j),P(:,5+j)];
+    end
+    radii=[cfg.boomRadius,repmat(cfg.armRadius,1,4),cfg.toolRadius];
+    radii=radii+cfg.safetyMargin;
+    pane=zeros(1,4);
+    if paneID>=1 && paneID<=size(cfg.windows,1)
+        pane=cfg.windows(paneID,:);
+    end
+    for j=1:6
+        A=endpoints(:,1,j); B=endpoints(:,2,j); r=radii(j);
+        if norm(B-A)<1e-6,continue;end
+
+        ns=max(2,ceil(norm(B-A)/0.035));
+        for k=0:ns
+            p=A+(B-A)*(k/ns);
+            if cfg.checkGroundCollision && ...
+                    p(3)<r && p(1)>-0.5 && p(1)<cfg.wallW+0.5
+                why=sprintf('link %d near ground',j); return;
+            end
+            inWall=p(1)>=-r && p(1)<=cfg.wallW+r && ...
+                   p(3)>=-r && p(3)<=cfg.wallH+r;
+            if ~inWall, continue;end
+
+            finalTool=(j==6 && contactAllowed && paneID>0 && ...
+                p(1)>=pane(1)+cfg.frameHalfWidth+r && ...
+                p(1)<=pane(1)+pane(3)-cfg.frameHalfWidth-r && ...
+                p(3)>=pane(2)+cfg.frameHalfWidth+r && ...
+                p(3)<=pane(2)+pane(4)-cfg.frameHalfWidth-r);
+            if finalTool
+                if p(2)>cfg.contactY+cfg.surfaceTolerance
+                    why='Tool tip penetrates glass'; return;
+                end
+            elseif p(2)>-r
+                why=sprintf('link %d intersects glass',j); return;
+            end
+
+            if p(2)>-cfg.frameDepth-r
+                for w=1:size(cfg.windows,1)
+                    win=cfg.windows(w,:);
+                    x0=win(1); x1=x0+win(3);
+                    z0=win(2); z1=z0+win(4);
+                    fw=cfg.frameHalfWidth+r;
+                    inRail=(p(1)>=x0-fw && p(1)<=x1+fw && ...
+                       p(3)>=z0-fw && p(3)<=z1+fw && ...
+                       (abs(p(1)-x0)<=fw || abs(p(1)-x1)<=fw || ...
+                        abs(p(3)-z0)<=fw || abs(p(3)-z1)<=fw));
+                    if inRail
+                        why=sprintf('link %d hits window frame %d',j,w);return;
+                    end
+                end
+            end
+        end
+    end
+
+    for a=2:6
+        for b=a+2:6
+            if norm(endpoints(:,2,a)-endpoints(:,1,a))<1e-6 || ...
+               norm(endpoints(:,2,b)-endpoints(:,1,b))<1e-6,continue;end
+            gap=segmentGap(endpoints(:,1,a),endpoints(:,2,a), ...
+                endpoints(:,1,b),endpoints(:,2,b));
+            if gap<radii(a)+radii(b)
+                why=sprintf('UR5 self-collision links %d/%d',a-1,b-1);return;
+            end
+        end
+    end
+
+    for b=4:6
+        gap=segmentGap(endpoints(:,1,1),endpoints(:,2,1), ...
+            endpoints(:,1,b),endpoints(:,2,b));
+        if gap<radii(1)+radii(b)
+            why=sprintf('Boom vs arm link %d',b-1);return;
+        end
+    end
+    ok=true;
+end
+
+function d=segmentGap(P0,P1,Q0,Q1)
+    % Closest distance between two finite 3D line segments.
+    u=P1-P0; v=Q1-Q0; w=P0-Q0;
+    a=dot(u,u); b=dot(u,v); c=dot(v,v);
+    d0=dot(u,w); e=dot(v,w); D=a*c-b*b;
+    sD=D; tD=D;
+    if D<1e-12
+        sN=0; sD=1; tN=e; tD=c;
+    else
+        sN=b*e-c*d0; tN=a*e-b*d0;
+        if sN<0,sN=0;tN=e;tD=c;
+        elseif sN>sD,sN=sD;tN=e+b;tD=c;end
+    end
+    if tN<0
+        tN=0;
+        if -d0<0,sN=0;
+        elseif -d0>a,sN=sD;
+        else,sN=-d0;sD=a;end
+    elseif tN>tD
+        tN=tD;
+        if (-d0+b)<0,sN=0;
+        elseif (-d0+b)>a,sN=sD;
+        else,sN=-d0+b;sD=a;end
+    end
+    if abs(sN)<1e-12,sc=0;else,sc=sN/sD;end
+    if abs(tN)<1e-12,tc=0;else,tc=tN/tD;end
+    d=norm(w+sc*u-tc*v);
+end
