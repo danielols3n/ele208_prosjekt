@@ -150,15 +150,14 @@ for k=1:nSpots
                    max(zmin,cz-patchHeight/2),min(zmax,cz+patchHeight/2)];
 end
 
-%% 4. ROUTE: NEAREST-NEIGHBOUR + 2-OPT
-% Route cost is planar distance between spot centers; not true joint time.
+
 order=nearestTwoOpt(spots,[basePosition(1) basePosition(3)]);
 orderedSpots=spots(order,:);
 routeDist=sum(sqrt(sum(diff([[basePosition(1) basePosition(3)];orderedSpots]).^2,2)));
 fprintf('Generated %d spots across %d panes; approximate wall route %.2f m.\n', ...
     nSpots,nWindows,routeDist);
 
-%% 5. SHOW PANE LAYOUT AND PLANNED VISIT ORDER
+
 figure('Name','Window spots and visit order','Color','w'); hold on; grid on;
 rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
 for j=1:nWindows
@@ -176,18 +175,16 @@ end
 xlabel('X (m)'); ylabel('Z (m)'); title('Numbered visit order and local cleaning patches');
 axis equal; xlim([0 wallW]); ylim([0 wallH]);
 
-%% 6. COLLISION-CHECKED MOTION PLANNING
-% phase 1 = lift transfer; phase 2 = cleaning; phase 3 = approach;
-% phase 4 = retract; all trajectories saved ONLY if sweep tests pass.
+
 planningTimer=tic;
 trajectory=zeros(0,15);
 mountPath=zeros(0,6);
 complete=false(nSpots,1);
-usedWallDistance=nan(nSpots,1); % actual chosen tool-center distance (metres)
+usedWallDistance=nan(nSpots,1); 
 failureReason=cell(nSpots,1);
 maxTipError=0; time=0;
 u=clamp([0 pi/2 4 armPark],lo,hi);
-% Check start configuration. Otherwise no motion may be trusted.
+
 [startSafe,startWhy]=collisionFree(u,cfg,0,false);
 if ~startSafe
     error('Initial robot configuration is in collision: %s. Choose a valid start pose.',startWhy);
@@ -195,7 +192,6 @@ end
 aborted=false;
 for visit=1:nSpots
     spotID=order(visit); cx=spots(spotID,1); cz=spots(spotID,2);
-    % SAFE RETRACTION from previous window location, if necessary.
     tip=posePosition(robot,fullQ(u));
     if tip(2)>-retractDistance+surfaceTolerance
         retreat=[tip(1);-retractDistance;tip(3)];
@@ -207,14 +203,11 @@ for visit=1:nSpots
         [trajectory,mountPath]=commitChunk(trajectory,mountPath,chunk,cfg);
         u=ui; time=ti;
     end
-    % Move mounting point between spots; hold the five small-arm angles.
     [chunk,ui,ti,reason]=moveLift(u,[cx;-workingStandoff;cz], ...
         spotID,cfg,time,motionStyle);
     if ~isempty(reason)
         failureReason{spotID}=['Lift transfer rejected: ' reason];
         fprintf('Visit %d spot %d: %s\n',visit,spotID,failureReason{spotID});
-        % Stop instead of cascading through the remaining spots from an
-        % unchanged configuration. A new route requires replanning.
         warning('Stopping after unsafe transfer. No further moves were committed.');
         aborted=true; break;
     end
@@ -223,7 +216,6 @@ for visit=1:nSpots
 
     p=patches(spotID,:);
     raster=verticalRaster(p(1),p(2),p(3),p(4),lineSpacing);
-    % Go to first raster point at a clearance depth, THEN approach glass.
     entry=[raster(1,1);-retractDistance;raster(1,2)];
     [chunk,ui,ti,reason]=moveArm(u,entry,3,spotID,cfg,time,'cartesian',false);
     if ~isempty(reason)
@@ -234,10 +226,6 @@ for visit=1:nSpots
     [trajectory,mountPath]=commitChunk(trajectory,mountPath,chunk,cfg);
     u=ui; time=ti;
 
-    % Try ALL specified wall-distance choices, closest first.
-    % Each trial is transactional: the entire approach, raster AND retract
-    % must pass IK plus swept collision checks before any trial is saved.
-    % A failed trial leaves the robot at the safe clearance entry pose.
     entryU=u;
     entryTime=time;
     reasons=cell(numel(distanceOptions),1);
@@ -270,7 +258,6 @@ for visit=1:nSpots
         end
         if ~trialOK, continue; end
 
-        % Finish with a checked retract from the chosen cleaning depth.
         tip=posePosition(robot,fullQ(trialU));
         retreat=[tip(1);-retractDistance;tip(3)];
         [part,newU,newT,reason]=moveArm(trialU,retreat,4,spotID,cfg, ...
@@ -282,7 +269,6 @@ for visit=1:nSpots
         trialChunk=[trialChunk;part];
         trialU=newU; trialT=newT;
 
-        % Entire candidate has passed: commit once, never a partial patch.
         [trajectory,mountPath]=commitChunk(trajectory,mountPath,trialChunk,cfg);
         u=trialU; time=trialT;
         usedWallDistance(spotID)=depth;
@@ -293,7 +279,6 @@ for visit=1:nSpots
     if ~complete(spotID)
         failureReason{spotID}=strjoin(reasons(~cellfun('isempty',reasons)),' | ');
         fprintf('Spot %d: No full collision-free cleaning sequence found at any wall distance.\n',spotID);
-        % Remain at the verified entry configuration; no failed trial was committed.
         u=entryU; time=entryTime;
     end
     fprintf('Visit %d/%d, spot %d: %s\n',visit,nSpots,spotID, ...
@@ -305,8 +290,6 @@ fprintf('Planning %.2f s; collision-checked completed %d/%d spots.\n', ...
 if aborted
     warning('Planning stopped: tool could not be safely retracted. No unsafe motion was appended.');
 end
-% Plot every ACTUALLY solved Cartesian tool position and all transfers.
-% NaN delimiters stop lines from drawing across failed / skipped spots.
 figure('Name','FULL solved Cartesian path on windows','Color','w');
 hold on; grid on; axis equal;
 rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
@@ -333,8 +316,6 @@ xlabel('Wall X (m)'); ylabel('Wall Z (m)');
 title('Validated sampled route: transfers, approaches, retracts and cleaning');
 legend('Location','eastoutside');
 
-% A second plot shows the actual 3D tool trajectory as well as the lift
-% mount position, including the depth dimension in front of the wall.
 figure('Name','Full 3D Cartesian paths','Color','w'); hold on; grid on;
 if ~isempty(trajectory)
     plot3(trajectory(:,13),trajectory(:,14),trajectory(:,15), ...
@@ -353,7 +334,6 @@ xlabel('X (m)');ylabel('Y (m)');zlabel('Z (m)');axis equal;
 view(40,20); legend('Location','best');
 title('Collision-checked FK trace of tool and lift mount');
 
-%% 7. RESULTS AND CSV OUTPUTS
 figure('Name','Spot cleaning result','Color','w'); hold on; grid on;
 rectangle('Position',[0 0 wallW wallH],'EdgeColor','k','LineWidth',2);
 for j=1:nWindows
@@ -409,13 +389,12 @@ if showAnimation && ~isempty(trajectory)
         wallW,wallH,plotEvery,playbackPause,followRadius,showEntirePath);
 end
 
-%% HELPER FUNCTIONS FOR CARTESIAN PATH MARKING
 function points=cartesianLine(p0,p1,step,maxSamples)
     p0=p0(:); p1=p1(:);
     count=max(1,ceil(norm(p1-p0)/step));
     assert(count<=maxSamples,'Cartesian segment too long. Increase step.');
     alpha=(1:count)'/count;
-    points=p0'+alpha*(p1-p0)'; % EXCLUDES p0; INCLUDES p1
+    points=p0'+alpha*(p1-p0)'; 
 end
 
 function plotPhasePath2D(traj,phase,color,width,name)
@@ -446,7 +425,7 @@ function plotPhasePath3DAxes(ax,traj,phase,color,width)
     plot3(ax,x,y,z,'Color',color,'LineWidth',width);
 end
 
-%% LOCAL FUNCTIONS
+
 function out=ternary(cond,a,b)
     if cond, out=a; else, out=b; end
 end
@@ -456,20 +435,16 @@ function out = clamp(v,lo,hi)
 end
 
 function q = fullQ(u)
-    % u = [q1 q2 d3 UR5_J1 UR5_J2 UR5_J3 UR5_J4 UR5_J5].
-    % q4=q2 (offset -pi/2 is included in Link 4).
     q=[u(1),u(2),u(3),u(2),u(4:8)];
 end
 
 function p = posePosition(robot,q)
     T=robot.fkine(q);
-    % Modern Peter Corke RTB returns an SE3; some versions return 4x4.
     if isa(T,'SE3'), M=T.T; else, M=double(T); end
     p=M(1:3,4);
 end
 
 function [v,err,ok] = solveLiftIK(lift,target,seeds,lo,hi,maxIter,tol,maxSeeds)
-    % qLift = [q1 q2 d3 q2]; fourth joint follows second.
     bestErr=Inf; v=clamp(seeds(1,:),lo,hi);
     for s=1:min(size(seeds,1),maxSeeds)
         z=clamp(seeds(s,:),lo,hi);
@@ -482,7 +457,6 @@ function [v,err,ok] = solveLiftIK(lift,target,seeds,lo,hi,maxIter,tol,maxSeeds)
             J3=[J(1:3,1),J(1:3,2)+J(1:3,4),J(1:3,3)];
             lambda=0.08;
             dz=J3' * ((J3*J3'+lambda^2*eye(3))\e);
-            % Limit per-iteration moves (radians for rotations, m for d3).
             dz = max(min(dz,[0.15;0.15;0.30]),[-0.15;-0.15;-0.30]);
             z=clamp(z+dz',lo,hi);
         end
@@ -524,7 +498,6 @@ function [v,err,ok] = solveArmIK(robot,liftU,previous,target,lo,hi,maxIter,tol,m
 end
 
 function path=verticalRaster(x0,x1,z0,z1,pitch)
-    % Vertical up/down zig-zag INSIDE the spot's clipped cleaning rectangle.
     nCols=max(2,ceil((x1-x0)/pitch)+1);
     xs=linspace(x0,x1,nCols);
     path=zeros(2*nCols,2);
@@ -941,7 +914,6 @@ function [ok,why]=collisionFree(u,cfg,paneID,contactAllowed)
 end
 
 function d=segmentGap(P0,P1,Q0,Q1)
-    % Closest distance between two finite 3D line segments.
     u=P1-P0; v=Q1-Q0; w=P0-Q0;
     a=dot(u,u); b=dot(u,v); c=dot(v,v);
     d0=dot(u,w); e=dot(v,w); D=a*c-b*b;
