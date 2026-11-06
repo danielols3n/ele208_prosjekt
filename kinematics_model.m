@@ -10,6 +10,8 @@ L_max = 15;                     % utskjøvet bomlengde [m]
 L_dyse = 0.15;                  % lengde på dysen [m]
 base_pos = [-3 -2 1.5];         % liftbasen i verdenskoordinater [m]
 h_c = 0.3;                      % kameraets avstand under origo i frame 4 [m]
+q2_min = deg2rad(75);           % bommen kan gå maks 15 grader under horisontal
+z_plate_min = 0.9;              % platen skal aldri lavere enn dette [m] (kamera 0.3 m under)
 
 % Dynamiske parametere, lift (verdier fra utregning)
 s = 3.6;                        % seksjonslengde [m]
@@ -45,7 +47,7 @@ mdl_puma560;
 %% Kinematics model of lift using Toolbox
 
 L(1) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
-L(2) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2);
+L(2) = Link('revolute', 'd', 0, 'a', 0, 'alpha', pi/2, 'qlim', [q2_min pi]);   % bom maks 15° under horisontal
 L(3) = Link('prismatic', 'theta', 0, 'a', 0, 'alpha', pi/2, 'qlim', [L_min L_max]);
 L(4) = Link('revolute','d', 0,'a', 0,'alpha', -pi/2);
 
@@ -159,7 +161,7 @@ full.plot(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
 %% Develop the inverse kinematics using Toolbox
 p = [3, 1.5, 8];        % Vilkårlig punkt på veggen
 T_mal = SE3(p) * SE3.Rx(-pi/2);      % End-effectoren peker mot veggen langs positiv y0
-q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0, L_min, L_max);           % Bruker egen inverse-kinematics funksjon
+q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0, L_min, L_max, z_plate_min);           % Bruker egen inverse-kinematics funksjon
 
 %% Sensor to robot command (camera detection → joint angles)
 
@@ -361,6 +363,12 @@ plan = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', false))
 q_test = plan.traj(end, 4:12);
 disp(full.fkine(q_test).t' - plan.traj(end, 13:15));            % Skal være ~0
 
+% Kontroll av hele 10x10-området: én flekk i hver av de 100 rutene
+% plan_alle = window_washer_planner(full, struct('nSpots', 100, 'showAnimation', false, 'exportCSV', false));
+% lav = plan_alle.patches(:,3) < 0.7;
+% fprintf('Nederste rad: %d/%d løst, totalt %d/100\n', sum(plan_alle.complete(lav)), sum(lav), sum(plan_alle.complete));
+% plan_alle.failure(~plan_alle.complete)                         % årsak for de som feiler
+
 %% Animasjon av vaskeoppgaven
 % plan = window_washer_planner(full, struct('showAnimation', false));
 % Q = plan.traj(1:5:end, 4:12);              % kvar 5. sample, så det går raskare
@@ -424,28 +432,95 @@ end
 G = full.links(6).G;
 fprintf('UR-skulder sett fra motoren: %.3f Nm (G = %d)\n', max(abs(tau(:,6)))/G, G);
 
-% Maks dysefart, kun vaskefasen (fase 2)
-tipT = interp1(ts, tip(iu,:), tt);                 % dyseposisjon på ny tidsakse
-vel  = [0; vecnorm(diff(tipT), 2, 2) / dtr];       % fart per sample [m/s]
-phT  = interp1(ts, ph(iu), tt, 'nearest');         % fase per sample
-fprintf('Maks dysefart under vasking: %.3f m/s\n', max(vel(phT == 2)));
+%% Dysefart under vasking
+% Farten regnes fra den glattede trajektorien som RNE bruker, med
+% differensialkinematikk: v = J(q) * qd. (Tidligere ble farten målt som
+% korden mellom to interpolerte punkter, som gir 0.1/sqrt(2) = 0.07 m/s
+% over 90-graders hjørner i rasteret selv om dysen faktisk går 0.1 m/s.)
+vel = zeros(size(tt));
+for k = 1:numel(tt)
+    J = full.jacob0(Q(k,:));
+    vel(k) = norm(J(1:3,:) * QD(k,:)');                % lineær dysefart [m/s]
+end
+phT = interp1(ts, ph(iu), tt, 'nearest');              % fase per sample
+
+% Skill rette strøk fra hjørner (retningsendring > 10 grader), med margin rundt hjørnene
+tipF = full.fkine(Q).transl;                           % dyseposisjon fra glattet trajektorie
+retn_t = diff(tipF);
+retn_t = retn_t ./ max(vecnorm(retn_t, 2, 2), eps);
+vinkel = acosd(min(1, max(-1, sum(retn_t(1:end-1,:) .* retn_t(2:end,:), 2))));
+turn = [false; vinkel > 10; false];
+hjorne = movmax(double(turn), 31) > 0;                 % ±0.3 s rundt hvert hjørne
+rett = phT == 2 & ~hjorne;
+
+fprintf('Dysefart på rette vaskestrøk: min %.3f, snitt %.3f m/s\n', min(vel(rett)), mean(vel(rett)));
+if any(phT == 2 & hjorne)
+    fprintf('Dysefart i hjørner: min %.3f m/s (bremser bevisst i retningsendring)\n', min(vel(phT == 2 & hjorne)));
+end
+
+figure; plot(tt, vel, 'LineWidth', 1.2); grid on; hold on
+yline(0.10, 'r--', 'Krav 10 cm/s');
+plot(tt(rett), vel(rett), '.', 'MarkerSize', 4);
+xlabel('t [s]'); ylabel('Dysefart [m/s]');
+legend('Alle faser', 'Krav', 'Rette vaskestrøk', 'Location', 'best')
+title('Dysefart, representativ vaskebane')
+
+%% Kapasitet: klarer armen 10 cm/s overalt der den vasker?
+% Kravet er at armen skal KUNNE bevege dysen med minst 10 cm/s i hele
+% workspacet. For hver vaskekonfigurasjon i planen regnes leddhastighetene
+% som trengs for 0.1 m/s i strøkretningene (vertikalt og sideveis) med
+% pseudoinversen av Jacobianen, og sammenlignes med UR5-grensen (180 grader/s).
+qa = plan.traj(plan.traj(:,2) == 2, 4:12);             % alle vaskekonfigurasjoner
+qa = qa(1:5:end, :);                                   % hver 5., for fart
+qd_max_UR = pi;                                        % UR5: 180 grader/s per ledd [rad/s]
+retn = [0 0 1; 1 0 0];                                 % vertikalt strøk, sidesteg
+behov = zeros(size(qa,1), 1);
+for k = 1:size(qa,1)
+    J = full.jacob0(qa(k,:));
+    Jv = J(1:3, 5:9);                                  % bare armleddene, liften står stille
+    for r = 1:2
+        qd = pinv(Jv) * (0.10 * retn(r,:)');
+        behov(k) = max(behov(k), max(abs(qd)));
+    end
+end
+v_maks = 0.10 * qd_max_UR ./ behov;                    % høyeste mulige dysefart per konfigurasjon
+fprintf('Laveste oppnåelige dysefart i workspace: %.2f m/s (krav 0.10)\n', min(v_maks));
+fprintf('Største leddhastighet ved 10 cm/s: %.1f grader/s (grense 180)\n', rad2deg(max(behov)));
+
+figure; histogram(v_maks, 30); grid on; hold on
+xline(0.10, 'r--', 'Krav 10 cm/s', 'LineWidth', 1.5);
+xlabel('Maks oppnåelig dysefart [m/s]'); ylabel('Antall konfigurasjoner');
+title('Fartskapasitet over alle vaskekonfigurasjoner')
 
 %% Invers kinematikk-funksjon (denne må stå nederst i scriptet)
 % Denne grovposisjonerer liften først, før den regner ut ikine for
 % robotarmen. På denne måten bruker vi liften til grovposisjonering, før vi
 % gjør selve vaskeoperasjonen med robotarmen.
-function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max)
+function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max, z_min)
     % T_mal.t = målposisjonen til dysen
     % T_mal.a = z-aksen til dysen, altså retningen strålen peker
     % T_mal.t - 0.5 * T_mal.a = 0.5 meter bak dysen, der platen med
     % robotarmen festet skal stå. 
     % - base.t gjør punktet relativt til liftbasen i stedet for
     % verdenskoordinater.
+    % z_min = laveste høyde platen kan stå på. For lave mål står platen
+    % høyere, og robotarmen rekker ned resten.
+    if nargin < 8, z_min = -inf; end
 
-    % Steg 1: grovposisjonering av lifen. Regnes ut ved hjelp av geometri
-    p = (T_mal.t - 0.5*T_mal.a) - base.t; 
-    d3 = min(max(norm(p), L_min), L_max);   % begrenser til bommens lengde
-    q_lift = [atan2(p(2), p(1)), atan2(hypot(p(1), p(2)), -p(3)), d3];
+    % Steg 1: grovposisjonering av liften. Regnes ut ved hjelp av geometri
+    p_plate = T_mal.t - 0.5*T_mal.a;
+    p_plate(3) = max(p_plate(3), z_min);    % platen aldri under z_min
+    p = p_plate - base.t;
+    h = hypot(p(1), p(2));
+    t2 = atan2(h, -p(3));
+    d3 = norm(p);
+    q2_lim = lift.links(2).qlim;            % bomvinkelen begrenses (maks 15° under horisontal)
+    if ~isempty(q2_lim) && (t2 < q2_lim(1) || t2 > q2_lim(2))
+        t2 = min(max(t2, q2_lim(1)), q2_lim(2));
+        d3 = h / sin(t2);                   % behold horisontal rekkevidde
+    end
+    d3 = min(max(d3, L_min), L_max);        % begrenser til bommens lengde
+    q_lift = [atan2(p(2), p(1)), t2, d3];
     q_lift(4) = q_lift(2) - pi/2;
 
     % Steg 2: invers kinematikk av robotarmen
