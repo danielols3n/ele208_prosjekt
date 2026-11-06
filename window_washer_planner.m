@@ -5,6 +5,9 @@ function res = window_washer_planner(robot, opt)
 %   Base, DH parameters, joint limits and tool (nozzle) are all read from the SerialLink model,
 %   which must use the main script's convention q = [t1 t2 d3 t2-pi/2 q_arm(1:5)].
 %   res.traj(:,4:12) can therefore be passed straight to full.fkine / full.rne / ROS.
+%
+%   Endring: bommen kan gå inntil 15 grader under horisontal (q2 >= 75 deg, leses fra qlim),
+%   og platen plasseres over lave flekker (aldri under c.mountMinZ). Da når armen nederste rad.
 if nargin<2, opt=struct(); end
 assert(isa(robot,'SerialLink') && robot.n==9, 'robot must be the 9-joint lift+arm SerialLink (full).');
 
@@ -37,12 +40,14 @@ c.jetRange   = 0.7;                   % effective jet length [m]
 c.jetOptions = [0.15 0.25 0.35 0.45 0.55 0.65 0.70];      % jet lengths tried (nozzle -> hit point)
 c.tiltBelowZ = 0.7;                   % patches reaching below this height are sprayed from above
 c.lowTilt    = deg2rad(43);           % downward tilt for those (43 deg + IK tolerance < 45 deg limit)
-c.lowStandoff = 0.8;                  % lift-mount distance from wall for those (mount stays at 1.5 m)
+c.lowStandoff = 0.8;                  % lift-mount distance from wall for those
+c.mountMinZ  = 0.9;                   % lift mount (plate) never below this height [m] (camera 0.3 m below)
+c.lowMountAbove = 0.3;                % for low patches the mount is placed this far above the spot [m]
 c.oriWeight = 0.5;                    % weight of orientation error vs position error in IK [m/rad]
 c.angTol    = deg2rad(2);             % IK accepts solutions within 2 deg of the desired direction
 c.maxSpray  = deg2rad(45);            % requirement: spray within +-45 deg of the wall normal
 c.nCol = 18;                          % trajectory columns: ... spray angle [deg], jet hit x, jet hit z
-c.lo(2) = max(c.lo(2), pi/2);         % boom never below horizontal (q2 >= pi/2)
+c.lo(2) = max(c.lo(2), deg2rad(75));  % boom at most 15 deg below horizontal (also set as qlim in main script)
 
 nSpots=getOpt(opt,'nSpots',20); randomSeed=getOpt(opt,'randomSeed',7);
 spotPlacement='spread';                                    % 'spread' or 'random'
@@ -58,7 +63,8 @@ c.liftStep=0.20; c.armStep=0.035; c.maxSamples=2000; c.dt=0.1;
 c.retract=0.30; c.transferY=-1.30;
 c.frameHalfWidth=0.018; c.frameDepth=0.060;
 c.radii=[0.065 0.035 0.035 0.035 0.035 0.035 0.012]+0.010; % boom, 5 UR links, nozzle (+ safety margin)
-c.checkGround=false; c.angStep=0.10; c.extStep=0.10; c.surfTol=0.015;
+c.checkGround=true;                   % boom can now go below horizontal, so check the ground
+c.angStep=0.10; c.extStep=0.10; c.surfTol=0.015;
 c.phaseCol ={[.9 .4 .1],[.02 .54 .26],[.55 .25 .80],[.65 .17 .55]};
 c.phaseName={'Lift transfer','Cleaning','Approach','Retract'};
 showAnimation=getOpt(opt,'showAnimation',true); playbackPause=0.025; plotEvery=3; followRadius=1.45;
@@ -117,7 +123,9 @@ for visit=1:nSpots
     end
     low=patches(id,3)<c.tiltBelowZ;                         % low patch: spray down from above
     standoff=c.workingStandoff; if low, standoff=c.lowStandoff; end
-    [chunk,u2,t2,r]=moveLift(u,[spots(id,1);-standoff;spots(id,2)],id,c,t);   % 2) (boom stays >= horizontal)
+    mountZ=max(spots(id,2),c.mountMinZ);                    % 2) mount height: at the spot, never below mountMinZ
+    if low, mountZ=max(spots(id,2)+c.lowMountAbove,c.mountMinZ); end   % low patch: mount above, arm reaches down
+    [chunk,u2,t2,r]=moveLift(u,[spots(id,1);-standoff;mountZ],id,c,t);
     if ~isempty(r)
         failure{id}=['Lift transfer rejected: ' r];
         fprintf('Visit %d spot %d: %s\n',visit,id,failure{id});
@@ -254,7 +262,7 @@ function a=angTo(z,v), a=acos(max(-1,min(1,z'*v))); end   % angle between nozzle
 function z=solveLiftIK(c,target)
     % closed-form lift IK (same as ik_system): 0p4 = d3*[c1*s2; s1*s2; -c2]
     % boom length is clamped to its limits - the lift only coarse-positions, the arm reaches the rest
-    % boom angle is clamped too (never below horizontal); then the horizontal reach is kept
+    % boom angle is clamped too (max 15 deg below horizontal); then the horizontal reach is kept
     p=target(:)-c.basePosition(:); h=hypot(p(1),p(2));
     q2=atan2(h,-p(3)); d3=norm(p);
     if q2<c.lo(2) || q2>c.hi(2), q2=min(max(q2,c.lo(2)),c.hi(2)); d3=h/sin(q2); end
