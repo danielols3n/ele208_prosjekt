@@ -8,7 +8,7 @@ close all force;
 L_min = 3.6;                    % innskjøvet bomlengde [m]
 L_max = 15;                     % utskjøvet bomlengde [m]
 L_dyse = 0.15;                  % lengde på dysen [m]
-base_pos = [0 -2 1.5];          % liftbasen i verdenskoordinater [m]
+base_pos = [-3 -2 1.5];         % liftbasen i verdenskoordinater [m]
 h_c = 0.3;                      % kameraets avstand under origo i frame 4 [m]
 
 % Dynamiske parametere, lift (verdier fra utregning)
@@ -142,19 +142,19 @@ figure; hold on;
 full.plot(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
 
 %% Demonstration of equivalence of the transformation matrix of the first four joints
-syms t1 t2 d3 t4 real
-
-q = [t1 t2 d3 t4 zeros(1,6)];
-T04_tb = full.A(1:4, q).T;
-
-c1 = cos(t1); s1 = sin(t1);
-c2 = cos(t2); s2 = sin(t2);
-c4 = cos(t4); s4 = sin(t4);
-
-trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
-
-result = simplify(T04_tb - trans_0_4);
-vpa(result, 2)
+% syms t1 t2 d3 t4 real
+% 
+% q = [t1 t2 d3 t4 zeros(1,6)];
+% T04_tb = full.A(1:4, q).T;
+% 
+% c1 = cos(t1); s1 = sin(t1);
+% c2 = cos(t2); s2 = sin(t2);
+% c4 = cos(t4); s4 = sin(t4);
+% 
+% trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
+% 
+% result = simplify(T04_tb - trans_0_4);
+% vpa(result, 2)
 
 %% Develop the inverse kinematics using Toolbox
 p = [3, 1.5, 8];        % Vilkårlig punkt på veggen
@@ -268,9 +268,9 @@ T_ref_PI = feedback(C_PI * P_v, 1);
 T_dist_PI = -feedback(P_v, C_PI);
 
 % 4. Simulering
-t      = 0:0.001:2;               % tidsvektor [s]
-w_ref  = 50 * ones(size(t));      % ønsket motorhastighet [rad/s]
-d      = d_motor * ones(size(t));     % tyngdekraften, konstant
+t      = 0:0.001:2;                     % tidsvektor [s]
+w_ref  = 50 * ones(size(t));            % ønsket motorhastighet [rad/s]
+d      = d_motor * ones(size(t));       % tyngdekraften, konstant
 
 w_P = lsim(T_ref_P, w_ref, t) + lsim(T_dist_P, d, t);
 w_PI = lsim(T_ref_PI, w_ref, t) + lsim(T_dist_PI, d, t);
@@ -353,6 +353,82 @@ disp(['Dyse oppnådd:      ' num2str(T_check.t')])
 plot3(p_w(1), 0, p_w(3), 'r.', 'MarkerSize', 25);
 
 full.plot(q, 'workspace', [-2 12 -6 2 0 13], 'scale', 0.1);
+
+%% Motion planning 
+plan = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', false));
+
+% Kontroll: planleggerens dyseposisjon = full.fkine
+q_test = plan.traj(end, 4:12);
+disp(full.fkine(q_test).t' - plan.traj(end, 13:15));            % Skal være ~0
+
+%% Animasjon av vaskeoppgaven
+% plan = window_washer_planner(full, struct('showAnimation', false));
+% Q = plan.traj(1:5:end, 4:12);              % kvar 5. sample, så det går raskare
+% 
+% figure; hold on; axis equal; grid on; view(35, 20)
+% patch([0 10 10 0], [0 0 0 0], [0 0 10 10], [0.8 0.9 1], ...
+%       'FaceAlpha', 0.3, 'EdgeColor', 'k');                 % veggen
+% m = plan.traj(:,2) == 2;                                   % vaskefasen
+% plot3(plan.traj(m,13), plan.traj(m,14), plan.traj(m,15), ...
+%       '.', 'Color', [0.2 0.7 0.3], 'MarkerSize', 3);       % vaskespora
+% 
+% full.plot(Q, 'workspace', [-4 11 -6 2 0 13], 'scale', 0.1, ...
+%           'fps', 30, 'trail', 'r', 'movie', 'vasking.mp4');
+
+%% Recursive Newton-Euler på en representativ vaskebane
+% Velg første flekk som ble vasket, og ta med hele sekvensen:
+% lift-transport (fase 1), tilnærming (3), vasking (2) og tilbaketrekking (4)
+ids = plan.order(plan.complete(plan.order));
+id  = ids(1);
+seg = plan.traj(plan.traj(:,3) == id, :);
+qs  = seg(:, 4:12);                      % leddvinkler, samme konvensjon som full
+ph  = seg(:, 2);                         % fase per sample
+tip = seg(:, 13:15);                     % dyseposisjon
+
+% 1) Realistisk tidsskala: planleggeren har fast dt per sample, så vi
+%    retimer etter dysens buelengde. 10 cm/s under vasking (kravet), raskere ellers.
+v = 0.10*ones(size(ph));  v(ph == 1) = 0.30;  v(ph == 3 | ph == 4) = 0.15;   % [m/s]
+ds = [0; vecnorm(diff(tip), 2, 2)];
+ts = cumsum(ds ./ v);
+[ts, iu] = unique(ts);  qs = qs(iu, :);  % fjern samples uten bevegelse
+
+% 2) Jevn trajektorie: interpoler, glatt og deriver numerisk
+dtr = 0.02;
+tt  = (0:dtr:ts(end))';
+Q   = smoothdata(interp1(ts, qs, tt, 'pchip'), 'gaussian', 25);
+QD  = gradient(Q', dtr)';
+QDD = gradient(QD', dtr)';
+
+% 3) Invers dynamikk med RNE
+tau   = full.rne(Q, QD, QDD);            % totalt moment/kraft per ledd
+tau_g = full.gravload(Q);                % bare gravitasjon
+tau_d = tau - tau_g;                     % treghet, Coriolis og friksjon
+
+% 4) Plot
+figure('Name', 'RNE – representativ vaskebane');
+subplot(3,1,1); plot(tt, tau(:,[1 2 4]), 'LineWidth', 1.3); grid on
+ylabel('\tau [Nm]'); legend('Ledd 1 (sving)', 'Ledd 2 (bom)', 'Ledd 4 (plate)');
+title(sprintf('Lift – flekk %d', id))
+subplot(3,1,2); plot(tt, tau(:,3), 'LineWidth', 1.3); grid on
+ylabel('F_3 [N]'); legend('Ledd 3 (teleskop)');
+subplot(3,1,3); plot(tt, tau(:,5:9), 'LineWidth', 1.3); grid on
+ylabel('\tau [Nm]'); xlabel('t [s]'); legend('UR 1', 'UR 2', 'UR 3', 'UR 4', 'UR 5');
+title('Robotarm')
+
+% 5) Nøkkeltall til rapporten
+fprintf('\n%-6s %12s %12s %12s\n', 'Ledd', 'max|tau|', 'max|grav|', 'max|dyn|');
+for j = 1:9
+    fprintf('%-6d %12.1f %12.1f %12.2f\n', j, max(abs(tau(:,j))), ...
+            max(abs(tau_g(:,j))), max(abs(tau_d(:,j))));
+end
+G = full.links(6).G;
+fprintf('UR-skulder sett fra motoren: %.3f Nm (G = %d)\n', max(abs(tau(:,6)))/G, G);
+
+% Maks dysefart, kun vaskefasen (fase 2)
+tipT = interp1(ts, tip(iu,:), tt);                 % dyseposisjon på ny tidsakse
+vel  = [0; vecnorm(diff(tipT), 2, 2) / dtr];       % fart per sample [m/s]
+phT  = interp1(ts, ph(iu), tt, 'nearest');         % fase per sample
+fprintf('Maks dysefart under vasking: %.3f m/s\n', max(vel(phT == 2)));
 
 %% Invers kinematikk-funksjon (denne må stå nederst i scriptet)
 % Denne grovposisjonerer liften først, før den regner ut ikine for
