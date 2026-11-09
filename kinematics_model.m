@@ -370,18 +370,18 @@ disp(full.fkine(q_test).t' - plan.traj(end, 13:15));            % Skal være ~0
 % plan_alle.failure(~plan_alle.complete)                         % årsak for de som feiler
 
 %% Animasjon av vaskeoppgaven
-% plan = window_washer_planner(full, struct('showAnimation', false));
-% Q = plan.traj(1:5:end, 4:12);              % kvar 5. sample, så det går raskare
-% 
-% figure; hold on; axis equal; grid on; view(35, 20)
-% patch([0 10 10 0], [0 0 0 0], [0 0 10 10], [0.8 0.9 1], ...
-%       'FaceAlpha', 0.3, 'EdgeColor', 'k');                 % veggen
-% m = plan.traj(:,2) == 2;                                   % vaskefasen
-% plot3(plan.traj(m,13), plan.traj(m,14), plan.traj(m,15), ...
-%       '.', 'Color', [0.2 0.7 0.3], 'MarkerSize', 3);       % vaskespora
-% 
-% full.plot(Q, 'workspace', [-4 11 -6 2 0 13], 'scale', 0.1, ...
-%           'fps', 30, 'trail', 'r', 'movie', 'vasking.mp4');
+plan = window_washer_planner(full, struct('showAnimation', false));
+Q = plan.traj(1:5:end, 4:12);              % kvar 5. sample, så det går raskare
+
+figure; hold on; axis equal; grid on; view(35, 20)
+patch([0 10 10 0], [0 0 0 0], [0 0 10 10], [0.8 0.9 1], ...
+      'FaceAlpha', 0.3, 'EdgeColor', 'k');                 % veggen
+m = plan.traj(:,2) == 2;                                   % vaskefasen
+plot3(plan.traj(m,13), plan.traj(m,14), plan.traj(m,15), ...
+      '.', 'Color', [0.2 0.7 0.3], 'MarkerSize', 3);       % vaskespora
+
+full.plot(Q, 'workspace', [-4 11 -6 2 0 13], 'scale', 0.1, ...
+          'fps', 30, 'trail', 'r', 'movie', 'vasking.mp4');
 
 %% Recursive Newton-Euler på en representativ vaskebane
 % Velg første flekk som ble vasket, og ta med hele sekvensen:
@@ -412,25 +412,43 @@ tau   = full.rne(Q, QD, QDD);            % totalt moment/kraft per ledd
 tau_g = full.gravload(Q);                % bare gravitasjon
 tau_d = tau - tau_g;                     % treghet, Coriolis og friksjon
 
+% Vannstrålen: 40 N langs dysens akse, bare under vasking
+F_jet = 40;
+phT = interp1(ts, ph(iu), tt, 'nearest');
+T = full.fkine(Q);
+tau_jet = zeros(size(Q));
+for k = find(phT == 2)'
+    J = full.jacob0(Q(k,:));
+    tau_jet(k,:) = J(1:3,:)' * (F_jet * T(k).a(:));
+end
+tau_tot = tau + tau_jet;
+
 % 4) Plot
 figure('Name', 'RNE – representativ vaskebane');
-subplot(3,1,1); plot(tt, tau(:,[1 2 4]), 'LineWidth', 1.3); grid on
+subplot(3,1,1); plot(tt, tau_tot(:,[1 2 4]), 'LineWidth', 1.3); grid on
 ylabel('\tau [Nm]'); legend('Ledd 1 (sving)', 'Ledd 2 (bom)', 'Ledd 4 (plate)');
 title(sprintf('Lift – flekk %d', id))
-subplot(3,1,2); plot(tt, tau(:,3), 'LineWidth', 1.3); grid on
+subplot(3,1,2); plot(tt, tau_tot(:,3), 'LineWidth', 1.3); grid on
 ylabel('F_3 [N]'); legend('Ledd 3 (teleskop)');
-subplot(3,1,3); plot(tt, tau(:,5:9), 'LineWidth', 1.3); grid on
-ylabel('\tau [Nm]'); xlabel('t [s]'); legend('UR 1', 'UR 2', 'UR 3', 'UR 4', 'UR 5');
+subplot(3,1,3); plot(tt, tau_tot(:,5:9), 'LineWidth', 1.3); grid on
+ylabel('\tau [Nm]'); xlabel('t [s]'); legend('Arm 1', 'Arm 2', 'Arm 3', 'Arm 4', 'Arm 5');
 title('Robotarm')
 
 % 5) Nøkkeltall til rapporten
 fprintf('\n%-6s %12s %12s %12s\n', 'Ledd', 'max|tau|', 'max|grav|', 'max|dyn|');
 for j = 1:9
-    fprintf('%-6d %12.1f %12.1f %12.2f\n', j, max(abs(tau(:,j))), ...
+    fprintf('%-6d %12.1f %12.1f %12.2f\n', j, max(abs(tau_tot(:,j))), ...
             max(abs(tau_g(:,j))), max(abs(tau_d(:,j))));
 end
+
+fprintf('\n%-6s %12s %12s %12s %12s\n', 'Ledd', 'max|tau|', 'max|grav|', 'max|dyn|', 'max|jet|');
+for j = 1:9
+    fprintf('%-6d %12.1f %12.1f %12.2f %12.1f\n', j, max(abs(tau_tot(:,j))), ...
+            max(abs(tau_g(:,j))), max(abs(tau_d(:,j))), max(abs(tau_jet(:,j))));
+end
+
 G = full.links(6).G;
-fprintf('UR-skulder sett fra motoren: %.3f Nm (G = %d)\n', max(abs(tau(:,6)))/G, G);
+fprintf('Arm-skulder sett fra motoren: %.3f Nm (G = %d)\n', max(abs(tau_tot(:,6)))/G, G);
 
 %% Dysefart under vasking
 % Farten regnes fra den glattede trajektorien som RNE bruker, med
@@ -491,6 +509,111 @@ figure; histogram(v_maks, 30); grid on; hold on
 xline(0.10, 'r--', 'Krav 10 cm/s', 'LineWidth', 1.5);
 xlabel('Maks oppnåelig dysefart [m/s]'); ylabel('Antall konfigurasjoner');
 title('Fartskapasitet over alle vaskekonfigurasjoner')
+
+%% Simulering: vannstrålen når hele omkretsen av 10 x 10 m-området
+% Lim inn i kinematics_model.m, rett før "%% Invers kinematikk-funksjon".
+% Hvert punkt er der strålen treffer veggen. Dysen står 'avstand' fra treffpunktet.
+% Står strålen vinkelrett og armen ikke rekker, vinkles dysen nedover (krav: maks 45°).
+
+steg    = 0.25;                          % avstand mellom punktene på omkretsen [m]
+avstand = 0.3;                           % dyse til vegg, samme som T_dirt [m]
+tilts   = deg2rad([0:10:40 45]);         % dysevinkler som prøves, minste først
+tol_p   = 1e-3;                          % godkjent posisjonsfeil [m]
+tol_r   = deg2rad(0.5);                  % godkjent feil på dyseaksen [rad]
+
+% Omkretsen: nederst, høyre side, øverst, venstre side
+u = (0:steg:10)';
+omkrets = [u,                 zeros(size(u));
+           10*ones(numel(u)-1,1), u(2:end);
+           flipud(u(1:end-1)), 10*ones(numel(u)-1,1);
+           zeros(numel(u)-2,1), flipud(u(2:end-1))];
+N = size(omkrets, 1);
+
+% Startgjetninger til ikine
+starter = [q_arm_ik0;
+           0     -1.2  1.5  -0.3  pi/2  0;
+           0.2    0.3  0.1   1.6  0.4   0;
+          -0.5   -1.7  2.5  -1.0  0.6   1.4];
+
+Q_omkrets = nan(N, 9);
+tilt_brukt = nan(N, 1);
+feil_p = nan(N, 1);
+q_forrige = q_arm_ik0;
+varsel = warning('off', 'all');          % ikine varsler når et forsøk ikke konvergerer
+
+for i = 1:N
+    treff = [omkrets(i,1) 0 omkrets(i,2)];
+    for phi = tilts
+        % Rx(-pi/2) peker dysen mot veggen, -phi vinkler den nedover
+        T_mal = SE3(treff) * SE3.Rx(-pi/2 - phi) * SE3(0, 0, -avstand);
+        kandidater = [q_forrige; starter];
+        funnet = false;
+        for r = 1:size(kandidater, 1)
+            try
+                q_i = ik_system(lift, arm_ik, full.base, T_mal, kandidater(r,:), ...
+                                L_min, L_max, z_plate_min);
+            catch
+                continue
+            end
+            if any(isnan(q_i)), continue; end
+            T_i = full.fkine(q_i);
+            e_p = norm(T_i.t - T_mal.t);
+            % Bare dyseaksen teller: rotasjon om strålen har ingen betydning
+            e_r = acos(min(1, max(-1, dot(T_i.a, T_mal.a))));
+            if e_p < tol_p && e_r < tol_r
+                funnet = true;
+                break
+            end
+        end
+        if funnet
+            Q_omkrets(i,:) = q_i;
+            tilt_brukt(i) = rad2deg(phi);
+            feil_p(i) = e_p;
+            q_forrige = [q_i(5:9) 0];
+            break
+        end
+    end
+end
+warning(varsel);
+
+% Resultat
+naadd = ~isnan(tilt_brukt);
+fprintf('\nOmkrets: %d av %d punkter nådd\n', sum(naadd), N);
+fprintf('Største posisjonsfeil: %.2f mm\n', 1000*max(feil_p));
+fprintf('Største dysevinkel: %.0f grader (krav: 45)\n', max(tilt_brukt));
+fprintf('Vinkelrett på veggen: %d punkter, vinklet: %d punkter\n', ...
+        sum(tilt_brukt == 0), sum(tilt_brukt > 0));
+fprintf('Bomlengde: %.2f til %.2f m (grenser %.1f og %.1f)\n', ...
+        min(Q_omkrets(:,3)), max(Q_omkrets(:,3)), L_min, L_max);
+
+% Figur 1: hvilke punkter som ble nådd, og med hvilken dysevinkel
+figure('Name', 'Omkrets av arbeidsområdet'); hold on; axis equal; grid on
+patch([0 10 10 0], [0 0 0 0], [0 0 10 10], [0.8 0.9 1], 'FaceAlpha', 0.3, 'EdgeColor', 'k');
+scatter3(omkrets(naadd,1), zeros(sum(naadd),1), omkrets(naadd,2), 45, tilt_brukt(naadd), 'filled');
+plot3(omkrets(~naadd,1), zeros(sum(~naadd),1), omkrets(~naadd,2), 'rx', 'MarkerSize', 10, 'LineWidth', 2);
+c = colorbar; c.Label.String = 'Dysevinkel nedover [°]';
+view(0, 0); xlabel('x [m]'); zlabel('z [m]');
+title(sprintf('Treffpunkt på omkretsen: %d av %d nådd', sum(naadd), N))
+
+% Figur 2: hva løftet og dysen må gjøre langs omkretsen
+figure('Name', 'Omkrets: bom og dysevinkel');
+subplot(2,1,1); plot(1:N, Q_omkrets(:,3), 'LineWidth', 1.3); grid on; hold on
+yline(L_max, '--', 'L_{max}'); yline(L_min, '--', 'L_{min}');
+ylabel('Bomlengde [m]');
+subplot(2,1,2); stairs(1:N, tilt_brukt, 'LineWidth', 1.3); grid on; hold on
+yline(45, '--', 'Krav 45°');
+xlabel('Punkt langs omkretsen'); ylabel('Dysevinkel [°]');
+
+% Animasjon: roboten følger omkretsen
+Q_ok = Q_omkrets(naadd, :);
+m = size(Q_ok, 1);
+Q_anim = interp1(1:m, Q_ok, linspace(1, m, 3*m));
+
+figure('Name', 'Animasjon av omkretsen'); hold on; axis equal; grid on; view(35, 20)
+patch([0 10 10 0], [0 0 0 0], [0 0 10 10], [0.8 0.9 1], 'FaceAlpha', 0.3, 'EdgeColor', 'k');
+plot3(omkrets(naadd,1), zeros(sum(naadd),1), omkrets(naadd,2), 'g.', 'MarkerSize', 10);
+full.plot(Q_anim, 'workspace', [-4 12 -6 2 0 13], 'scale', 0.1, 'fps', 30, 'trail', 'r');
+% Legg til 'movie', 'omkrets.mp4' i full.plot for å lagre video til presentasjonen.
 
 %% Invers kinematikk-funksjon (denne må stå nederst i scriptet)
 % Denne grovposisjonerer liften først, før den regner ut ikine for
