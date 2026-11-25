@@ -24,6 +24,12 @@
 % Verden: MATLAB-punkt [x y z] ligger i Gazebo i [x, y + 1.97, z]
 % (glasset ligger i y = 0 i MATLAB og y = 1.97 i Gazebo).
 
+%% Deklarasjon om KI
+% Til denne koden har vi brukt KI som støtte i å skrive kode. Teksten over
+% er også skrevet av KI for å lage en oversikt over hva koden inneholder,
+% slik at resten av gruppen lettere kan forstå hvordan systemet fungerer.
+% Koden er delvis skrevet for hånd, og delvis klipt og limt direkte fra KI.
+
 %% 1) Robotmodell (for innstillingene, siden kinematics_model.m starter med clear)
 if ~exist('full','var') || ~isa(full,'SerialLink')
     fprintf('Fant ikke `full`, kjorer kinematics_model.m ...\n');
@@ -235,18 +241,22 @@ function sjekk_base_i_gazebo(node, base)
         for tr = m.transforms(:)'
             if strcmp(tr.child_frame_id, 'base_link')
                 v = tr.transform.translation;
-                gz = [v.x + 0.7, v.y - 1.97, v.z + 0.75];     % yaw-akse i MATLAB-koordinater
+                gz = double([v.x + 0.7, v.y - 1.97, v.z + 0.75]);   % yaw-akse i MATLAB-koordinater
                 if norm(gz - base) > 1e-3
-                    error('vask:base', ['Gazebo er startet med base [%g %g %g], men full.base er ' ...
+                    melding = sprintf(['Gazebo er startet med base [%g %g %g], men full.base er ' ...
                         '[%g %g %g]. Start Gazebo med:  bash start_gazebo.sh base:="%g %g %g"'], ...
                         gz, base, base);
+                    error('vask:base', '%s', melding);
                 end
+                fprintf('Basen i Gazebo stemmer med full.base [%g %g %g].\n', base);
                 return
             end
         end
+        error('base_link ble ikke funnet i /tf_static');
     catch e
         if strcmp(e.identifier, 'vask:base'), rethrow(e); end
-        warning('Kunne ikke lese basen fra /tf_static (%s). Sjekk selv at Gazebo-basen er [%g %g %g].', ...
-                e.message, base);
+        melding = sprintf('Kunne ikke lese basen fra /tf_static (%s). Sjekk selv at Gazebo-basen er [%g %g %g].', ...
+                          e.message, base);
+        warning('vask:tf', '%s', melding);
     end
 end
