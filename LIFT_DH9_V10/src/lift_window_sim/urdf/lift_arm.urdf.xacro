@@ -1,0 +1,371 @@
+<?xml version="1.0"?>
+<!-- Modell av lift, arm og dyse. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="lift_window">
+  <xacro:arg name="controllers_file" default="config/controllers.yaml" />
+  <xacro:property name="home_extension" value="0.7956574135464056" />
+  <xacro:property name="arm_d1" value="0.089159" />
+  <xacro:property name="arm_a2" value="-0.425" />
+  <xacro:property name="arm_a3" value="-0.39225" />
+  <xacro:property name="arm_d4" value="0.10915" />
+  <xacro:property name="arm_d5" value="0.09465" />
+  <xacro:macro name="box_link" params="name sx sy sz cx cy cz mass color">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="${cx} ${cy} ${cz}" rpy="0 0 0" />
+        <mass value="${mass}" />
+        <inertia ixx="${mass*(sy*sy+sz*sz)/12.0}" ixy="0" ixz="0" iyy="${mass*(sx*sx+sz*sz)/12.0}" iyz="0" izz="${mass*(sx*sx+sy*sy)/12.0}" />
+      </inertial>
+      <visual>
+        <origin xyz="${cx} ${cy} ${cz}" rpy="0 0 0" />
+        <geometry>
+          <box size="${sx} ${sy} ${sz}" />
+        </geometry>
+        <material name="${name}_color">
+          <color rgba="${color}" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${cx} ${cy} ${cz}" rpy="0 0 0" />
+        <geometry>
+          <box size="${sx} ${sy} ${sz}" />
+        </geometry>
+      </collision>
+    </link>
+    <gazebo reference="${name}">
+      <selfCollide>false</selfCollide>
+      <gravity>true</gravity>
+    </gazebo>
+  </xacro:macro>
+  <xacro:macro name="wheel_link" params="name radius width mass">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="${mass}" />
+        <inertia ixx="${mass*(3*radius*radius+width*width)/12.0}" ixy="0" ixz="0" iyy="${mass*radius*radius/2.0}" iyz="0" izz="${mass*(3*radius*radius+width*width)/12.0}" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+        <geometry>
+          <cylinder radius="${radius}" length="${width}" />
+        </geometry>
+        <material name="${name}_color">
+          <color rgba="0.08 0.08 0.09 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+        <geometry>
+          <cylinder radius="${radius}" length="${width}" />
+        </geometry>
+      </collision>
+    </link>
+    <gazebo reference="${name}">
+      <selfCollide>false</selfCollide>
+      <gravity>true</gravity>
+    </gazebo>
+  </xacro:macro>
+  <!-- Jeg fikk forslag fra KI til Xacro-oppsettet og hjelp til å feilsøke
+       hvordan teleskoptrinnene følger uttrekket og holder armen på plass. -->
+  <xacro:macro name="follower_joint" params="name parent child">
+    <joint name="${name}" type="prismatic">
+      <parent link="${parent}" />
+      <child link="${child}" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <axis xyz="1 0 0" />
+      <limit lower="0" upper="2.3" velocity="0.12" effort="15000" />
+      <dynamics damping="3" friction="0" />
+      <mimic joint="boom_extension" multiplier="1" offset="0" />
+    </joint>
+  </xacro:macro>
+  <link name="world" />
+  <xacro:box_link name="base_link" mass="500" sx="2.2" sy="1.6" sz="0.6" cx="0.0" cy="0.0" cz="0.0" color="0.18 0.43 0.65 1" />
+  <xacro:box_link name="turret" mass="30" sx="0.45" sy="0.45" sz="0.6" cx="0.0" cy="0.0" cz="-0.15" color="0.18 0.43 0.65 1" />
+  <xacro:box_link name="boom_outer" mass="100" sx="3.0" sy="0.44" sz="0.44" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage1" mass="74" sx="3.0" sy="0.36" sz="0.36" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage2" mass="64" sx="3.0" sy="0.32" sz="0.32" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage3" mass="53" sx="3.0" sy="0.28" sz="0.28" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage4" mass="43" sx="3.0" sy="0.24" sz="0.24" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage5" mass="33" sx="3.0" sy="0.2" sz="0.2" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="stage6" mass="23" sx="3.0" sy="0.16" sz="0.16" cx="1.5" cy="0.0" cz="0.0" color="0.95 0.60 0.08 1" />
+  <xacro:box_link name="swivel_mount" mass="2" sx="0.18" sy="0.14" sz="0.14" cx="-0.13" cy="0.0" cz="0.0" color="0.18 0.43 0.65 1" />
+  <xacro:box_link name="arm_mount" mass="3" sx="0.08" sy="0.08" sz="0.02" cx="0.0" cy="0.0" cz="-0.06" color="0.18 0.43 0.65 1" />
+  <xacro:box_link name="arm1" mass="2" sx="0.14" sy="0.14" sz="0.089159" cx="0.0" cy="0.0" cz="0.0445795" color="0.18 0.43 0.65 1" />
+  <link name="dh1" />
+  <xacro:box_link name="arm2" mass="4" sx="0.425" sy="0.12" sz="0.12" cx="-0.2125" cy="0.0" cz="0.0" color="0.18 0.43 0.65 1" />
+  <link name="dh2" />
+  <xacro:box_link name="arm3" mass="3" sx="0.39225" sy="0.1" sz="0.1" cx="-0.196125" cy="0.0" cz="0.0" color="0.18 0.43 0.65 1" />
+  <link name="dh3" />
+  <xacro:box_link name="arm4" mass="1" sx="0.1" sy="0.1" sz="0.10915" cx="0.0" cy="0.0" cz="0.054575" color="0.18 0.43 0.65 1" />
+  <link name="dh4" />
+  <xacro:box_link name="arm5" mass="1" sx="0.07" sy="0.07" sz="0.08" cx="0.0" cy="0.0" cz="0.047325" color="0.18 0.43 0.65 1" />
+  <link name="dh5" />
+  <xacro:box_link name="nozzle" mass="3" sx="0.2" sy="0.06" sz="0.06" cx="0.1" cy="0.0" cz="0.0" color="0.85 0.15 0.1 1" />
+  <link name="tcp" />
+  <xacro:wheel_link name="wheel_front_left" mass="12" radius="0.3" width="0.24" />
+  <xacro:wheel_link name="wheel_front_right" mass="12" radius="0.3" width="0.24" />
+  <xacro:wheel_link name="wheel_rear_left" mass="12" radius="0.3" width="0.24" />
+  <xacro:wheel_link name="wheel_rear_right" mass="12" radius="0.3" width="0.24" />
+  <joint name="world_fixed" type="fixed">
+    <parent link="world" />
+    <child link="base_link" />
+    <origin xyz="-3.0 0.0 0.75" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="boom_yaw" type="revolute">
+    <parent link="base_link" />
+    <child link="turret" />
+    <origin xyz="0.7 0.0 0.75" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-3.0" upper="3.0" velocity="0.15" effort="30000" />
+    <dynamics damping="3" friction="0" />
+  </joint>
+  <joint name="boom_pitch" type="revolute">
+    <parent link="turret" />
+    <child link="boom_outer" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 1.0 0.0" />
+    <limit lower="-1.48" upper="1.0" velocity="0.12" effort="40000" />
+    <dynamics damping="3" friction="0" />
+  </joint>
+  <joint name="boom_extension" type="prismatic">
+    <parent link="boom_outer" />
+    <child link="stage1" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="1.0 0.0 0.0" />
+    <limit lower="0.0" upper="2.3" velocity="0.12" effort="15000" />
+    <dynamics damping="3" friction="0" />
+  </joint>
+  <xacro:follower_joint name="stage2_slide" parent="stage1" child="stage2" />
+  <xacro:follower_joint name="stage3_slide" parent="stage2" child="stage3" />
+  <xacro:follower_joint name="stage4_slide" parent="stage3" child="stage4" />
+  <xacro:follower_joint name="stage5_slide" parent="stage4" child="stage5" />
+  <xacro:follower_joint name="stage6_slide" parent="stage5" child="stage6" />
+  <joint name="mount_fixed" type="fixed">
+    <parent link="stage6" />
+    <child link="swivel_mount" />
+    <origin xyz="3.15 0.0 0.0" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="arm_swivel" type="revolute">
+    <parent link="swivel_mount" />
+    <child link="arm_mount" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 1.0 0.0" />
+    <limit lower="-1.57" upper="1.57" velocity="0.5" effort="800" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="arm_joint_1" type="revolute">
+    <parent link="arm_mount" />
+    <child link="arm1" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-6.28" upper="6.28" velocity="0.7" effort="400" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="dh_fixed_1" type="fixed">
+    <parent link="arm1" />
+    <child link="dh1" />
+    <origin xyz="0 0 ${arm_d1}" rpy="1.5707963267948966 0.0 0.0" />
+  </joint>
+  <joint name="arm_joint_2" type="revolute">
+    <parent link="dh1" />
+    <child link="arm2" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-3.14" upper="3.14" velocity="0.7" effort="600" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="dh_fixed_2" type="fixed">
+    <parent link="arm2" />
+    <child link="dh2" />
+    <origin xyz="${arm_a2} 0 0" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="arm_joint_3" type="revolute">
+    <parent link="dh2" />
+    <child link="arm3" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-2.95" upper="2.95" velocity="0.7" effort="400" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="dh_fixed_3" type="fixed">
+    <parent link="arm3" />
+    <child link="dh3" />
+    <origin xyz="${arm_a3} 0 0" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="arm_joint_4" type="revolute">
+    <parent link="dh3" />
+    <child link="arm4" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-6.28" upper="6.28" velocity="1.0" effort="120" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="dh_fixed_4" type="fixed">
+    <parent link="arm4" />
+    <child link="dh4" />
+    <origin xyz="0 0 ${arm_d4}" rpy="-1.5707963267948966 0.0 0.0" />
+  </joint>
+  <joint name="arm_joint_5" type="revolute">
+    <parent link="dh4" />
+    <child link="arm5" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <axis xyz="0.0 0.0 1.0" />
+    <limit lower="-3.14" upper="3.14" velocity="1.0" effort="120" />
+    <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="dh_fixed_5" type="fixed">
+    <parent link="arm5" />
+    <child link="dh5" />
+    <origin xyz="0 0 ${arm_d5}" rpy="1.5707963267948966 0.0 0.0" />
+  </joint>
+  <joint name="nozzle_fixed" type="fixed">
+    <parent link="dh5" />
+    <child link="nozzle" />
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 -1.5707963267948966 -4.71238898038469" />
+  </joint>
+  <joint name="tcp_fixed" type="fixed">
+    <parent link="nozzle" />
+    <child link="tcp" />
+    <origin xyz="0.2 0.0 0.0" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="wheel_front_left_fixed" type="fixed">
+    <parent link="base_link" />
+    <child link="wheel_front_left" />
+    <origin xyz="0.95 0.92 -0.45" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="wheel_front_right_fixed" type="fixed">
+    <parent link="base_link" />
+    <child link="wheel_front_right" />
+    <origin xyz="0.95 -0.92 -0.45" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="wheel_rear_left_fixed" type="fixed">
+    <parent link="base_link" />
+    <child link="wheel_rear_left" />
+    <origin xyz="-0.95 0.92 -0.45" rpy="0.0 0.0 0.0" />
+  </joint>
+  <joint name="wheel_rear_right_fixed" type="fixed">
+    <parent link="base_link" />
+    <child link="wheel_rear_right" />
+    <origin xyz="-0.95 -0.92 -0.45" rpy="0.0 0.0 0.0" />
+  </joint>
+  <!-- Jeg brukte KI til å sette opp koblingen mellom leddene og Gazebo-kontrolleren. -->
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="boom_yaw">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.33448376061468615</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="boom_pitch">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">-1.1552971866648185</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="boom_extension">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="stage2_slide" mimic="false">
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="stage3_slide" mimic="false">
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="stage4_slide" mimic="false">
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="stage5_slide" mimic="false">
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="stage6_slide" mimic="false">
+      <state_interface name="position">
+        <param name="initial_value">${home_extension}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_swivel">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">0.9110049310103322</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_joint_1">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">2.6023847971617067</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_joint_2">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">-2.5847824843750744</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_joint_3">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">-0.12266452193218694</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_joint_4">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">5.490151239135331</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+    <joint name="arm_joint_5">
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">-0.22803537215983577</param>
+      </state_interface>
+      <state_interface name="velocity" />
+      <state_interface name="effort" />
+    </joint>
+  </ros2_control>
+  <gazebo reference="nozzle_fixed">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controllers_file)</parameters>
+    </plugin>
+  </gazebo>
+</robot>

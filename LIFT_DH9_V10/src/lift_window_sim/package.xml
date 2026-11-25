@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>lift_window_sim</name><version>0.5.0</version>
+  <description>ELE208: teleskoplift, armfeste og femleddet robotarm i Xacro</description>
+  <maintainer email="187519@stud.hvl.no">ELE208 project group</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend><exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend><exec_depend>launch_ros</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend><exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend><exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend><exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend><exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>control_msgs</exec_depend><exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend><exec_depend>builtin_interfaces</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>
