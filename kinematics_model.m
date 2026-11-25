@@ -650,6 +650,8 @@ full.plot(Q_anim, 'workspace', [-4 12 -6 2 0 13], 'scale', 0.1, 'fps', 30, 'trai
 % Denne grovposisjonerer liften først, før den regner ut ikine for
 % robotarmen. På denne måten bruker vi liften til grovposisjonering, før vi
 % gjør selve vaskeoperasjonen med robotarmen.
+
+% Denne er skrevet selv, men fremgangsmåten for hvordan den virker, spesielt hvordan liften posisjoneres og det virtuelle leddet (ledd 6 på robotarm) er gjort i diskusjon med KI.
 function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max, z_min)
     % T_mal.t = målposisjonen til dysen
     % T_mal.a = z-aksen til dysen, altså retningen strålen peker
