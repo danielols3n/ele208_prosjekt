@@ -1,3 +1,15 @@
+%% Deklarasjon om KI
+% Mesteparten av koden her er skrevet selv. De seksjonene der vi har brukt
+% KI som støtte er spesifisert som kommentar før selve seksjonen.
+% De aller fleste plot er utformet ved hjelp av KI. Grunnen til dette er
+% at KI er flinkere på å lage fine plot av dataen vår. Dette gjør at vi kan
+% enklere fremstille resultatene våre på en god måte.
+% Kode som ikke er merket med KI, er skrevet av oss uten bruk av KI. 
+% Feilsøking har det vært nok av, og her har vi brukt KI som
+% sparringspartner og for å enklere oppdage syntaxfeil/Toolbox-feil osv. 
+% Vi har også brukt det som hjelp for å forstå feilkoder som vi har fått
+% fra Robotics Toolbox osv.
+
 %% Clear the workspace 
 clear;
 clc;
@@ -141,25 +153,26 @@ fprintf('gravload ledd 2: %.0f Nm, håndregning: %.0f Nm\n', abs(tau_g(2)), M0)
 
 q = [q_lift q_arm];
 figure; hold on;
-full.plot(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
+full_start = SerialLink(full, 'name', 'start');
+full_start.plot(q, 'workspace', [-13 13 -13 13 -1 13], 'scale', 0.1)
 
-%% Demonstration of equivalence of the transformation matrix of the first four joints
-% syms t1 t2 d3 t4 real
-% 
-% q = [t1 t2 d3 t4 zeros(1,6)];
-% T04_tb = full.A(1:4, q).T;
-% 
-% c1 = cos(t1); s1 = sin(t1);
-% c2 = cos(t2); s2 = sin(t2);
-% c4 = cos(t4); s4 = sin(t4);
-% 
-% trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
-% 
-% result = simplify(T04_tb - trans_0_4);
-% vpa(result, 2)
+% Demonstration of equivalence of the transformation matrix of the first four joints
+syms t1 t2 d3 t4 real
+
+q = [t1 t2 d3 t4 zeros(1,6)];
+T04_tb = full.A(1:4, q).T;
+
+c1 = cos(t1); s1 = sin(t1);
+c2 = cos(t2); s2 = sin(t2);
+c4 = cos(t4); s4 = sin(t4);
+
+trans_0_4 = [c1*c2*c4+c1*s2*s4 s1 c1*s2*c4-c1*c2*s4 d3*c1*s2; s1*c2*c4+s1*s2*s4 -c1 s1*s2*c4-s1*c2*s4 d3*s1*s2; s2*c4-c2*s4 0 -c2*c4-s2*s4 -d3*c2; 0 0 0 1];
+
+result = simplify(T04_tb - trans_0_4);
+vpa(result, 2)
 
 %% Develop the inverse kinematics using Toolbox
-p = [3, 1.5, 8];        % Vilkårlig punkt på veggen
+p = [3, -0.3, 8];        % Vilkårlig punkt på veggen
 T_mal = SE3(p) * SE3.Rx(-pi/2);      % End-effectoren peker mot veggen langs positiv y0
 q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0, L_min, L_max, z_plate_min);           % Bruker egen inverse-kinematics funksjon
 
@@ -181,15 +194,14 @@ dirt_position = [0.2 -0.1 2.0];        % Vilkårlig punkt på veggen der kamerae
 % x - hvor langt til høyre i bildet
 % y - hvor langt ned i bildet
 % z - avstand fra kamera til flekk
-trans_4_C = [0 -1 0 0; 0 0 -1 0; 1 0 0 0; 0 0 0 1]
+trans_4_C = [0 -1 0 -h_c; 0 0 -1 0; 1 0 0 0; 0 0 0 1]
 trans0_C = trans_0_4 * trans_4_C;
 
 T_wC = full.base.T * trans0_C;        % transformation matrix camera -> world
 p_w = T_wC * [dirt_position'; 1];   % dirt position in world coordinates
 T_dirt = SE3(p_w(1), p_w(2) - 0.3, p_w(3)) * SE3.Rx(-pi/2); 
 
-q0 = [q_lift q_arm];
-q = full.ikine(T_dirt, 'q0', q0);
+q = ik_system(lift, arm_ik, full.base, T_dirt, q_arm_ik0, L_min, L_max, z_plate_min);
 
 %% Joint dynamic model and demonstration of how to analyze the robot dynamics and transfer function
 q_str = [q_lift 0 0 0 0 0];
@@ -201,6 +213,9 @@ joint_tf = full.jointdynamics(q_str);
 s_ = tf('s');
 P_v = tf(joint_tf(6));           % moment -> hastighet. jointdynamics gir hastigheten
 P = P_v / s_;                    % Deler på s, får da vinkelen. Går fra moment til vinkel.
+
+P
+P_v
 
 % Leser ut J' og B'
 % Nevneren i P_v er J's + B', så de to koeffisientene som blir hentet ut er
@@ -327,6 +342,8 @@ xlabel('t [s]'); ylabel('\tau_{cmd} [Nm]')
 title('Kommandert motormoment, 10° sprang')
 
 %% Oppsett av workspace med vegg
+% Oppsettet her av workspace er laget med hjelp av KI, koden er skrevet
+% selv, men med inspirasjon og hjelp fra KI
 figure; hold on; axis equal; grid on
 view(35, 20)
 
@@ -354,7 +371,8 @@ disp(['Dyse oppnådd:      ' num2str(T_check.t')])
 % Skittflekk (målpunkt fra kameraet)
 plot3(p_w(1), 0, p_w(3), 'r.', 'MarkerSize', 25);
 
-full.plot(q, 'workspace', [-2 12 -6 2 0 13], 'scale', 0.1);
+full_flekk = SerialLink(full, 'name', 'flekk');
+full_flekk.plot(q, 'workspace', [-2 12 -6 2 0 13], 'scale', 0.1);
 
 %% Motion planning 
 plan = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', false));
@@ -386,6 +404,10 @@ full.plot(Q, 'workspace', [-4 11 -6 2 0 13], 'scale', 0.1, ...
 %% Recursive Newton-Euler på en representativ vaskebane
 % Velg første flekk som ble vasket, og ta med hele sekvensen:
 % lift-transport (fase 1), tilnærming (3), vasking (2) og tilbaketrekking (4)
+
+% Denne delen er skrevet selv, men vi fikk den ikke til å fungere. KI har
+% da blitt brukt til å feilsøke og hjelpe oss for å få koden til å fungere.
+
 ids = plan.order(plan.complete(plan.order));
 id  = ids(1);
 seg = plan.traj(plan.traj(:,3) == id, :);
@@ -455,6 +477,9 @@ fprintf('Arm-skulder sett fra motoren: %.3f Nm (G = %d)\n', max(abs(tau_tot(:,6)
 % differensialkinematikk: v = J(q) * qd. (Tidligere ble farten målt som
 % korden mellom to interpolerte punkter, som gir 0.1/sqrt(2) = 0.07 m/s
 % over 90-graders hjørner i rasteret selv om dysen faktisk går 0.1 m/s.)
+
+% Denne delen er skrevet med hjelp/inspirasjon fra KI
+
 vel = zeros(size(tt));
 for k = 1:numel(tt)
     J = full.jacob0(Q(k,:));
@@ -488,6 +513,9 @@ title('Dysefart, representativ vaskebane')
 % workspacet. For hver vaskekonfigurasjon i planen regnes leddhastighetene
 % som trengs for 0.1 m/s i strøkretningene (vertikalt og sideveis) med
 % pseudoinversen av Jacobianen, og sammenlignes med UR5-grensen (180 grader/s).
+
+% Denne delen er skrevet med inspirasjon/støtte fra KI
+
 qa = plan.traj(plan.traj(:,2) == 2, 4:12);             % alle vaskekonfigurasjoner
 qa = qa(1:5:end, :);                                   % hver 5., for fart
 qd_max_UR = pi;                                        % UR5: 180 grader/s per ledd [rad/s]
@@ -511,9 +539,12 @@ xlabel('Maks oppnåelig dysefart [m/s]'); ylabel('Antall konfigurasjoner');
 title('Fartskapasitet over alle vaskekonfigurasjoner')
 
 %% Simulering: vannstrålen når hele omkretsen av 10 x 10 m-området
-% Lim inn i kinematics_model.m, rett før "%% Invers kinematikk-funksjon".
 % Hvert punkt er der strålen treffer veggen. Dysen står 'avstand' fra treffpunktet.
 % Står strålen vinkelrett og armen ikke rekker, vinkles dysen nedover (krav: maks 45°).
+
+% På denne delen har vi brukt en god del KI, rett og slett fordi vi ikke
+% helt visste hvordan vi skulle gå frem og gjøre det med å simulere alle
+% punktene rundt arbeidsområdet vårt.
 
 steg    = 0.25;                          % avstand mellom punktene på omkretsen [m]
 avstand = 0.3;                           % dyse til vegg, samme som T_dirt [m]
