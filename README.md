@@ -83,3 +83,5 @@ Leddvinklene fra MATLAB regnes om til Gazebo-leddene i `gazebo_vaskebane.m`, og 
 ## Bruk av KI
 
 Hver fil starter med en deklarasjon av hvordan KI er brukt. Kort sagt er mesteparten av kinematikk- og dynamikkoden skrevet av gruppen selv. KI er brukt til plott, feilsøking og som sparringspartner, og mer omfattende i baneplanleggeren, Gazebo-scriptet og simuleringen av vannstrålen. Seksjoner skrevet med KI-støtte er merket i koden.
+
+Denne README-filen er skrevet av Claude Code. I tillegg er prosjektet i dette github repositoryet satt opp med Claude Code og noen commits er utført med hjelp av Claude Code
