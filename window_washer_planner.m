@@ -1,3 +1,22 @@
+%% Deklarasjon om KI
+% Mesteparten av koden her er skrevet selv. De seksjonene der vi har brukt
+% KI som støtte er spesifisert som kommentar før selve seksjonen.
+% De aller fleste plot er utformet ved hjelp av KI. Grunnen til dette er
+% at KI er flinkere på å lage fine plot av dataen vår. Dette gjør at vi kan
+% enklere fremstille resultatene våre på en god måte.
+% Feilsøking har det vært nok av, og her har vi brukt KI som
+% sparringspartner og for å enklere oppdage syntaxfeil/Toolbox-feil osv. 
+% Vi har også brukt det som hjelp for å forstå feilkoder som vi har fått
+% fra Robotics Toolbox osv.
+% I denne koden har vi ikke markert hvilke kode spesifikt som er skrevet av
+% KI og hva som ikke er. Grunnen til dette er fordi vi har brukt en god
+% blanding gjennom hele koden. Vaskebanen vår er relativ kompleks, og det
+% må den være for å svare godt på oppgaven. Til dette trengte vi hjelp. Vi
+% har gjennom hele baneplanleggingen brukt KI som sparringspartner og
+% forsøkt å løse oppgaven på best mulig vis.
+% Beskrivelsen under er skrevet med KI, for å lettere kunne forklare andre
+% gruppemedlemmer hva koden gjør
+
 function res = window_washer_planner(robot, opt)
 %WINDOW_WASHER_PLANNER Collision-checked motion planning for the lift + 5-axis UR5 window cleaner.
 %   res = window_washer_planner(full)        plans with the robot model from the main script
