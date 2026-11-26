@@ -32,7 +32,7 @@ Hele systemet er modellert som én seriekjede med 9 ledd (`full = lift * arm`) i
 | [`window_washer_planner.m`](window_washer_planner.m) | Baneplanlegger med kollisjonssjekk. Lager flekker på vinduene, planlegger løft- og armbevegelser og vaskestrøk, og returnerer en trajektorie (`res.traj`) som kan sendes rett til `fkine`, `rne` eller ROS. |
 | [`gazebo_vaskebane.m`](gazebo_vaskebane.m) | Kjører vaskebanen fra planleggeren på roboten i Gazebo over ROS 2 (`FollowJointTrajectory`), logger målt posisjon og sammenligner den med den planlagte. |
 | [`utregning_dynamic_model.py`](utregning_dynamic_model.py) | Overslag over masse og tyngdepunkt for bomseksjonene (aluminiumsprofiler), som brukes som dynamiske parametere i MATLAB-modellen. |
-| [`Gazebo model/`](Gazebo%20model/) | ROS 2-pakken `lift_window_sim` med robotmodellen (URDF/xacro), fasadeverdenen (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
+| [`Gazebo_model/`](Gazebo_model/) | ROS 2-pakken `lift_window_sim` med robotmodellen (URDF/xacro), fasadeverdenen (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
 | [`Presentations/`](Presentations/) | Presentasjonene fra PDR, CDR og sluttpresentasjonen. |
 | [`Bilder + videoer/`](Bilder%20+%20videoer/) | Figurer fra baneplanleggingen og en simuleringsvideo (`Robot_sim_8x.mp4`). |
 
@@ -40,7 +40,7 @@ Hele systemet er modellert som én seriekjede med 9 ledd (`full = lift * arm`) i
 
 - MATLAB med **Control System Toolbox** og **ROS Toolbox** (ROS Toolbox trengs bare for Gazebo-delen)
 - **Robotics Toolbox for MATLAB** av Peter Corke
-- **ROS 2 Jazzy og Gazebo** med xacro, for pakken i `Gazebo model/`. Gazebo-pakken inneholder bare roboten; all styring skjer fra MATLAB.
+- **ROS 2 Jazzy og Gazebo** med xacro, for pakken i `Gazebo_model/`. Gazebo-pakken inneholder bare roboten; all styring skjer fra MATLAB.
 - Python 3 (bare for `utregning_dynamic_model.py`)
 
 ## Slik kjører du
@@ -69,11 +69,11 @@ res = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', true, 'e
 
 1. Bygg pakken og start Gazebo (krever ROS 2 Jazzy og `ros-jazzy-xacro`):
    ```bash
-   cd "Gazebo model"
+   cd Gazebo_model
    bash start_gazebo.sh
    ```
    Vent til terminalen skriver `TOP READY`. Bruk samme `ROS_DOMAIN_ID` i MATLAB og i Gazebo (24 er standard i ELE208).
-2. Kjør testene fra MATLAB, med `Gazebo model/src/lift_window_sim/matlab/` på path:
+2. Kjør testene fra MATLAB, med `Gazebo_model/src/lift_window_sim/matlab/` på path:
    ```matlab
    logg = kjor_test("top");      % rasterbane over øverste 10 × 1 m-stripe
    r = vurder_logg(logg, "top"); % følgefeil, treffpunkt på veggen og dekning
