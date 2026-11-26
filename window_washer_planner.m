@@ -183,7 +183,7 @@ for i=1:size(traj,1)
 end
 
 %% Result plots
-figure('Name','Full solved Cartesian path on windows','Color','w'); drawWall(c,[.70 .75 .80]);
+figure('Name','Full solved Cartesian path on windows'); drawWall(c,[.70 .75 .80]);
 plot(spots(order,1),spots(order,2),':','Color',[.6 .6 .6],'DisplayName','Visit order (nominal)');
 if ~isempty(traj)
     plot(traj(:,13),traj(:,15),'-','Color',[.76 .76 .76],'LineWidth',.6,'DisplayName','Entire sampled tool trace');
@@ -193,7 +193,7 @@ scatter(spots(:,1),spots(:,2),32,[.7 .1 .1],'filled','DisplayName','Target spots
 text(spots(order,1)+.045,spots(order,2),string(1:nSpots)','FontSize',8);
 title('Validated sampled route: transfers, approaches, retracts and cleaning'); legend('Location','eastoutside');
 
-figure('Name','Full 3D Cartesian paths','Color','w'); hold on; grid on; axis equal; view(40,20);
+figure('Name','Full 3D Cartesian paths'); hold on; grid on; axis equal; view(40,20);
 if ~isempty(traj)
     plot3(traj(:,13),traj(:,14),traj(:,15),'-','Color',[.76 .76 .76],'LineWidth',.6,'DisplayName','Entire sampled tool trace');
     for ph=1:4, plotPhase(gca,traj,ph,c,1.3+0.3*(ph==2)); end
@@ -202,7 +202,7 @@ end
 xlabel('X (m)'); ylabel('Y (m)'); zlabel('Z (m)'); legend('Location','best');
 title('Collision-checked FK trace of tool and lift mount');
 
-figure('Name','Spot cleaning result','Color','w'); drawWall(c,[.65 .75 .83]);
+figure('Name','Spot cleaning result'); drawWall(c,[.65 .75 .83]);
 for k=1:nSpots
     p=patches(k,:); col=[1 .78 .78]; if complete(k), col=[.80 .94 .80]; end
     rectangle('Position',[p(1) p(3) p(2)-p(1) p(4)-p(3)],'FaceColor',col,'EdgeColor',[.35 .5 .35]);
@@ -216,7 +216,7 @@ title(sprintf('Planned cleaning: %d/%d patches solved (red=incomplete)',sum(comp
 
 if any(traj(:,2)==2)                                        % orientation requirement check
     m=traj(:,2)==2;
-    figure('Name','Spray angle','Color','w'); plot(traj(m,1),traj(m,16),'.','MarkerSize',4); grid on; hold on;
+    figure('Name','Spray angle'); plot(traj(m,1),traj(m,16),'.','MarkerSize',4); grid on; hold on;
     yline(45,'r--','Krav: 45°'); xlabel('t (s)'); ylabel('Vinkel fra veggnormal (°)');
     title(sprintf('Dysevinkel under vasking: maks %.1f°',max(traj(m,16))));
 end
