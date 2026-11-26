@@ -101,6 +101,30 @@
   <link name="dh5" />
   <xacro:box_link name="nozzle" mass="3" sx="0.2" sy="0.06" sz="0.06" cx="0.1" cy="0.0" cz="0.0" color="0.85 0.15 0.1 1" />
   <link name="tcp" />
+  <!-- Loddrett plate ved bomtuppen og 3D-kamera (bare visuelle, uten kollisjon).
+       I arm_mount peker x ned, z langs bommen (ut mot armen) og y mot veggen.
+       Samme som frame 4 i MATLAB: x4 = -x, y4 = -y, z4 = z. Masser fra kinematics_model.m. -->
+  <xacro:macro name="visual_box_link" params="name sx sy sz mass color">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="${mass}" />
+        <inertia ixx="${mass*(sy*sy+sz*sz)/12.0}" ixy="0" ixz="0" iyy="${mass*(sx*sx+sz*sz)/12.0}" iyz="0" izz="${mass*(sx*sx+sy*sy)/12.0}" />
+      </inertial>
+      <visual>
+        <geometry>
+          <box size="${sx} ${sy} ${sz}" />
+        </geometry>
+        <material name="${name}_color">
+          <color rgba="${color}" />
+        </material>
+      </visual>
+    </link>
+  </xacro:macro>
+  <xacro:visual_box_link name="plate" mass="10" sx="0.8" sy="0.4" sz="0.01" color="0.75 0.75 0.75 1" />
+  <xacro:visual_box_link name="camera" mass="1" sx="0.05" sy="0.05" sz="0.15" color="0.1 0.1 0.1 1" />
+  <xacro:visual_box_link name="camera_lens" mass="0.01" sx="0.03" sy="0.01" sz="0.03" color="0.2 0.4 0.9 1" />
+  <link name="camera_optical" />
   <xacro:wheel_link name="wheel_front_left" mass="12" radius="0.3" width="0.24" />
   <xacro:wheel_link name="wheel_front_right" mass="12" radius="0.3" width="0.24" />
   <xacro:wheel_link name="wheel_rear_left" mass="12" radius="0.3" width="0.24" />
@@ -151,6 +175,28 @@
     <axis xyz="0.0 1.0 0.0" />
     <limit lower="-1.57" upper="1.57" velocity="0.5" effort="800" />
     <dynamics damping="0.1" friction="0" />
+  </joint>
+  <joint name="plate_fixed" type="fixed">
+    <parent link="arm_mount" />
+    <child link="plate" />
+    <origin xyz="0.0 0.0 -0.005" rpy="0 0 0" />
+  </joint>
+  <!-- Kameraet sitter h_c = 0.3 m under origo i frame 4 og ser mot veggen (-y4 = +y her). -->
+  <joint name="camera_fixed" type="fixed">
+    <parent link="arm_mount" />
+    <child link="camera" />
+    <origin xyz="0.3 0.0 0.0" rpy="0 0 0" />
+  </joint>
+  <joint name="camera_lens_fixed" type="fixed">
+    <parent link="camera" />
+    <child link="camera_lens" />
+    <origin xyz="0.0 0.03 0.0" rpy="0 0 0" />
+  </joint>
+  <!-- Optisk ramme som trans_4_C i kinematics_model.m: z_C langs -y4, x_C langs z4. -->
+  <joint name="camera_optical_fixed" type="fixed">
+    <parent link="camera" />
+    <child link="camera_optical" />
+    <origin xyz="0 0 0" rpy="0 -1.5707963267948966 -1.5707963267948966" />
   </joint>
   <joint name="arm_joint_1" type="revolute">
     <parent link="arm_mount" />
