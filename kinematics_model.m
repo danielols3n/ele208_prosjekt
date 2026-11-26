@@ -10,6 +10,8 @@
 % Vi har også brukt det som hjelp for å forstå feilkoder som vi har fått
 % fra Robotics Toolbox osv.
 
+% Kommentarer er 
+
 %% Clear the workspace 
 clear;
 clc;
@@ -176,6 +178,10 @@ p = [3, -0.3, 8];        % Vilkårlig punkt på veggen
 T_mal = SE3(p) * SE3.Rx(-pi/2);      % End-effectoren peker mot veggen langs positiv y0
 q_ik = ik_system(lift, arm_ik, full.base, T_mal, q_arm_ik0, L_min, L_max, z_plate_min);           % Bruker egen inverse-kinematics funksjon
 
+T_ik = full.fkine(q_ik);
+err_mm  = norm(T_ik.t - T_mal.t) * 1000
+err_deg = acosd(dot(T_ik.a, T_mal.a))
+
 %% Sensor to robot command (camera detection → joint angles)
 
 % 0T4 evaluated numerically at the current lift configuration
@@ -224,6 +230,11 @@ P_v
 J_str = den(1)                          % J' for strukket arm
 B = den(2)                              % B'
 
+% jointdynamics teller motortregheten to ganger (rne tar allerede med G^2*Jm)
+J_str = J_str - full.links(6).Jm      % korrigert J' for strukket arm
+P_v = tf(1, [J_str B]);               % moment -> hastighet, korrigert
+P   = P_v / s_;                       % moment -> vinkel
+
 % Finner polene
 % Polene forteller om systemet (her leddet) er stabilt
 pole(P)                 
@@ -236,6 +247,8 @@ tf_b = full.jointdynamics(q_boy);
 P_b = tf(tf_b(6)) / s_;
 [~, den_b] = tfdata(P_b, 'v');
 J_boy = den_b(1);
+J_boy = J_boy - full.links(6).Jm;
+P_b = tf(1, [J_boy B]) / s_;
 
 figure;
 step(P, P_b, 5);
@@ -293,9 +306,10 @@ w_P = lsim(T_ref_P, w_ref, t) + lsim(T_dist_P, d, t);
 w_PI = lsim(T_ref_PI, w_ref, t) + lsim(T_dist_PI, d, t);
 
 % 5. Plot
-figure; plot(t, w_ref, 'w--', t, w_P, t, w_PI, 'LineWidth', 1.3); grid on
-legend('\omega^*', 'P', 'PI', 'Location', 'southeast')
+figure; plot(t, w_ref, 'k--', t, w_P, t, w_PI, 'LineWidth', 1.3); grid on
+legend('Reference', 'P', 'PI', 'Location', 'southeast')
 xlabel('t [s]'); ylabel('\omega [rad/s]')
+exportgraphics(gcf, 'p_vs_pi.png', 'Resolution', 300)
 
 %% Posisjonsregulator (P)
 % Posisjonsregulatoren er en P-regulator
@@ -320,8 +334,9 @@ theta_ledd = rad2deg(theta / G);                        % tilbake til leddvinkel
 
 figure; plot(t, theta_ledd, 'LineWidth', 1.3); grid on; hold on
 yline(10, '--'); yline(11.5, ':', 'OS 15 %'); xline(2, ':', 't_s = 2 s')
-xlabel('t [s]'); ylabel('Leddvinkel [°]')
-title('Posisjonsregulator, skulder')
+xlabel('t [s]'); ylabel('Joint angle [°]')
+title('Position controller, shoulder')
+exportgraphics(gcf, 'position_controller_shoulder.png', 'Resolution', 300)
 
 info = stepinfo(theta_ledd, t, 10, 'SettlingTimeThreshold', 0.02)
 avvik = abs(10 - theta_ledd(end))
@@ -336,10 +351,11 @@ tau_cmd = lsim(C_PI, e_omega, t);               % kommandert motormoment [Nm]
 tau_maks = max(abs(tau_cmd));
 
 figure; plot(t, tau_cmd, 'LineWidth', 1.3); grid on; hold on
-yline(0.9, '--', 'Momentgrense');
-yline(d_motor, ':', 'Holde mot tyngdekraften');
+yline(0.9, '--', 'Torque limit');
+yline(d_motor, ':', 'Gravity holding torque');
 xlabel('t [s]'); ylabel('\tau_{cmd} [Nm]')
-title('Kommandert motormoment, 10° sprang')
+title('Commanded motor torque, 10° step')
+exportgraphics(gcf, 'commanded_motor_torque.png', 'Resolution', 300)
 
 %% Oppsett av workspace med vegg
 % Oppsettet her av workspace er laget med hjelp av KI, koden er skrevet
@@ -650,8 +666,6 @@ full.plot(Q_anim, 'workspace', [-4 12 -6 2 0 13], 'scale', 0.1, 'fps', 30, 'trai
 % Denne grovposisjonerer liften først, før den regner ut ikine for
 % robotarmen. På denne måten bruker vi liften til grovposisjonering, før vi
 % gjør selve vaskeoperasjonen med robotarmen.
-
-% Denne er skrevet selv, men fremgangsmåten for hvordan den virker, spesielt hvordan liften posisjoneres og det virtuelle leddet (ledd 6 på robotarm) er gjort i diskusjon med KI.
 function q = ik_system(lift, arm_ik, base, T_mal, q0_arm, L_min, L_max, z_min)
     % T_mal.t = målposisjonen til dysen
     % T_mal.a = z-aksen til dysen, altså retningen strålen peker
