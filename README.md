@@ -2,7 +2,7 @@
 
 Semesterprosjekt i **ELE208 Robotmanipulatorer** ved Høgskulen på Vestlandet (HVL), høsten 2026.
 
-Gruppen har valgt oppgave 1: et robotsystem som vasker vinduer på en fasade. Løsningen er en **bomlift med en UR5-inspirert robotarm** på tuppen av bommen. Et 3D-kamera finner skitne flekker på glasset, og armen fører en vanndyse over flekkene.
+Gruppen har valgt oppgave 1: et robotsystem som vasker vinduer på en fasade. Løsningen er en **bomlift med en robotarm** på tuppen av bommen. Et 3D-kamera finner skitne flekker på glasset, og armen fører en vanndyse over flekkene.
 
 ![Simulering av roboten](Bilder%20+%20videoer/motion_planning1.png)
 
@@ -32,13 +32,15 @@ Hele systemet er modellert som én seriekjede med 9 ledd (`full = lift * arm`) i
 | [`window_washer_planner.m`](window_washer_planner.m) | Baneplanlegger med kollisjonssjekk. Lager flekker på vinduene, planlegger løft- og armbevegelser og vaskestrøk, og returnerer en trajektorie (`res.traj`) som kan sendes rett til `fkine`, `rne` eller ROS. |
 | [`gazebo_vaskebane.m`](gazebo_vaskebane.m) | Kjører vaskebanen fra planleggeren på roboten i Gazebo over ROS 2 (`FollowJointTrajectory`), logger målt posisjon og sammenligner den med den planlagte. |
 | [`utregning_dynamic_model.py`](utregning_dynamic_model.py) | Overslag over masse og tyngdepunkt for bomseksjonene (aluminiumsprofiler), som brukes som dynamiske parametere i MATLAB-modellen. |
+| [`Gazebo model/`](Gazebo%20model/) | ROS 2-pakken `lift_window_sim` med robotmodellen (URDF/xacro), fasadeverdenen (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
+| [`Presentations/`](Presentations/) | Presentasjonene fra PDR, CDR og sluttpresentasjonen. |
 | [`Bilder + videoer/`](Bilder%20+%20videoer/) | Figurer fra baneplanleggingen og en simuleringsvideo (`Robot_sim_8x.mp4`). |
 
 ## Krav
 
 - MATLAB med **Control System Toolbox** og **ROS Toolbox** (ROS Toolbox trengs bare for Gazebo-delen)
 - **Robotics Toolbox for MATLAB** av Peter Corke
-- **ROS 2 og Gazebo** med robotmodellen (for `gazebo_vaskebane.m`). Gazebo-pakken inneholder bare roboten; all styring skjer fra MATLAB.
+- **ROS 2 Jazzy og Gazebo** med xacro, for pakken i `Gazebo model/`. Gazebo-pakken inneholder bare roboten; all styring skjer fra MATLAB.
 - Python 3 (bare for `utregning_dynamic_model.py`)
 
 ## Slik kjører du
@@ -65,12 +67,19 @@ res = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', true, 'e
 
 ### Gazebo / ROS 2
 
-1. Start Gazebo med samme liftbase som i MATLAB og samme `ROS_DOMAIN_ID`:
+1. Bygg pakken og start Gazebo (krever ROS 2 Jazzy og `ros-jazzy-xacro`):
    ```bash
-   bash start_gazebo.sh base:="-3 -2 1.5"
+   cd "Gazebo model"
+   bash start_gazebo.sh
    ```
-   Vent til terminalen skriver `READY`.
-2. Kjør i MATLAB:
+   Vent til terminalen skriver `TOP READY`. Bruk samme `ROS_DOMAIN_ID` i MATLAB og i Gazebo (24 er standard i ELE208).
+2. Kjør testene fra MATLAB, med `Gazebo model/src/lift_window_sim/matlab/` på path:
+   ```matlab
+   logg = kjor_test("top");      % rasterbane over øverste 10 × 1 m-stripe
+   r = vurder_logg(logg, "top"); % følgefeil, treffpunkt på veggen og dekning
+   ```
+   De andre testene er `"vinkel"` (dysevinkler på ±45°) og `"last"` (holder stillingen i 60 s med dyse, slange og vannstrålekraft). `vurder_logg` lagrer resultatet som en JSON-fil ved siden av loggen.
+3. For å kjøre hele vaskebanen fra planleggeren:
    ```matlab
    kinematics_model
    res = window_washer_planner(full);
