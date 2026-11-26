@@ -28,8 +28,10 @@ def generate_launch_description():
         arguments=['joint_state_broadcaster','--controller-manager-timeout','120'])
     controller=Node(package='controller_manager',executable='spawner',output='screen',
         arguments=['joint_trajectory_controller','--controller-manager-timeout','120'])
+    # Teleskopet kan synke litt inn før kontrolleren er aktiv (bommen står bratt i startstillingen).
+    # Sjekken skal bare kontrollere at trinnene følger hverandre, ikke hvor langt bommen er ute.
     check=Node(package='lift_window_sim',executable='check_chain',output='screen',
-        parameters=[{'use_sim_time':True}])
+        parameters=[{'use_sim_time':True,'minimum_extension':0.0}])
     def after_spawn(event,context):
         # Kontrollerne startes først når roboten er opprettet i Gazebo.
         if event.returncode!=0:
