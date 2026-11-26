@@ -10,7 +10,7 @@ d = [0, 0, 3.15+6*q(3), 0, .089159, 0, 0, .10915, .09465];
 a = [0, 0, 0, 0, 0, -.425, -.39225, 0, 0];
 alpha = [pi/2, pi/2, pi/2, -pi/2, pi/2, 0, 0, -pi/2, pi/2];
 T = eye(4);
-T(1:3,4) = [-2.3; 0; 1.5]; % rotasjonsaksen står 0,7 m til høyre for basen
+T(1:3,4) = [-3; -0.03; 1.5]; % rotasjonsaksen (= full.base i MATLAB, flyttet 1,97 m i y)
 % Jeg fikk kodeforslag/veildening fra KI for DH-beregningen og hjelp til å
 % sammenligne fortegn og rekkefølge i matrisene med Xacro-modellen.
 for k = 1:9
@@ -28,6 +28,6 @@ Ry = [cos(ry) 0 sin(ry); 0 1 0; -sin(ry) 0 cos(ry)];
 R = Rz*Ry;
 verktoy = eye(4);
 verktoy(1:3,1:3) = R;
-verktoy(1:3,4) = R*[.20;0;0]; % dysespissen ligger 0,20 m fra siste armledd
+verktoy(1:3,4) = R*[.2323;0;0]; % dysespissen ligger 0,0823 + 0,15 m fra siste armledd (som full.tool)
 T = T*verktoy;
 end

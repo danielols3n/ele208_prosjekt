@@ -2,9 +2,8 @@
 % Kjorer vaskebanen fra window_washer_planner.m paa roboten i Gazebo over ROS 2.
 %
 % Krav: ROS Toolbox + Peter Corkes Robotics Toolbox. Gazebo maa kjore med samme
-% liftbase som full.base og samme ROS_DOMAIN_ID som MATLAB:
-%     bash start_gazebo.sh                       (base [0 -2 1.5])
-%     bash start_gazebo.sh base:="-3 -2 1.5"     (annen base)
+% ROS_DOMAIN_ID som MATLAB. Liftbasen i URDF-en er [-3 -2 1.5] (som full.base):
+%     cd Gazebo_model && bash start_gazebo.sh
 % Vent til Gazebo-terminalen skriver READY.
 %
 % Rekkefolge i MATLAB:
@@ -244,8 +243,8 @@ function sjekk_base_i_gazebo(node, base)
                 gz = double([v.x + 0.7, v.y - 1.97, v.z + 0.75]);   % yaw-akse i MATLAB-koordinater
                 if norm(gz - base) > 1e-3
                     melding = sprintf(['Gazebo er startet med base [%g %g %g], men full.base er ' ...
-                        '[%g %g %g]. Start Gazebo med:  bash start_gazebo.sh base:="%g %g %g"'], ...
-                        gz, base, base);
+                        '[%g %g %g]. Endre world_fixed i lift_arm.urdf.xacro eller full.base.'], ...
+                        gz, base);
                     error('vask:base', '%s', melding);
                 end
                 fprintf('Basen i Gazebo stemmer med full.base [%g %g %g].\n', base);

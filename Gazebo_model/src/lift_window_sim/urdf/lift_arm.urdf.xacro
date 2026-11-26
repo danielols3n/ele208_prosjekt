@@ -99,7 +99,7 @@
   <link name="dh4" />
   <xacro:box_link name="arm5" mass="1" sx="0.07" sy="0.07" sz="0.08" cx="0.0" cy="0.0" cz="0.047325" color="0.18 0.43 0.65 1" />
   <link name="dh5" />
-  <xacro:box_link name="nozzle" mass="3" sx="0.2" sy="0.06" sz="0.06" cx="0.1" cy="0.0" cz="0.0" color="0.85 0.15 0.1 1" />
+  <xacro:box_link name="nozzle" mass="3" sx="0.2323" sy="0.06" sz="0.06" cx="0.11615" cy="0.0" cz="0.0" color="0.85 0.15 0.1 1" />
   <link name="tcp" />
   <!-- Loddrett plate ved bomtuppen og 3D-kamera (bare visuelle, uten kollisjon).
        I arm_mount peker x ned, z langs bommen (ut mot armen) og y mot veggen.
@@ -132,7 +132,8 @@
   <joint name="world_fixed" type="fixed">
     <parent link="world" />
     <child link="base_link" />
-    <origin xyz="-3.0 0.0 0.75" rpy="0.0 0.0 0.0" />
+    <origin xyz="-3.7 -0.03 0.75" rpy="0.0 0.0 0.0" />
+    <!-- Yaw-aksen havner i [-3 -2 1.5] i MATLAB (= full.base); glasset ligger i y = 1.97 her og y = 0 i MATLAB. -->
   </joint>
   <joint name="boom_yaw" type="revolute">
     <parent link="base_link" />
@@ -147,7 +148,7 @@
     <child link="boom_outer" />
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 1.0 0.0" />
-    <limit lower="-1.48" upper="1.0" velocity="0.12" effort="40000" />
+    <limit lower="-1.5708" upper="1.0" velocity="0.12" effort="40000" />
     <dynamics damping="3" friction="0" />
   </joint>
   <joint name="boom_extension" type="prismatic">
@@ -216,7 +217,7 @@
     <child link="arm2" />
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 0.0 1.0" />
-    <limit lower="-3.14" upper="3.14" velocity="0.7" effort="600" />
+    <limit lower="-6.2832" upper="6.2832" velocity="0.7" effort="600" />
     <dynamics damping="0.1" friction="0" />
   </joint>
   <joint name="dh_fixed_2" type="fixed">
@@ -229,7 +230,7 @@
     <child link="arm3" />
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 0.0 1.0" />
-    <limit lower="-2.95" upper="2.95" velocity="0.7" effort="400" />
+    <limit lower="-6.2832" upper="6.2832" velocity="0.7" effort="400" />
     <dynamics damping="0.1" friction="0" />
   </joint>
   <joint name="dh_fixed_3" type="fixed">
@@ -255,7 +256,7 @@
     <child link="arm5" />
     <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
     <axis xyz="0.0 0.0 1.0" />
-    <limit lower="-3.14" upper="3.14" velocity="1.0" effort="120" />
+    <limit lower="-6.2832" upper="6.2832" velocity="1.0" effort="120" />
     <dynamics damping="0.1" friction="0" />
   </joint>
   <joint name="dh_fixed_5" type="fixed">
@@ -271,7 +272,7 @@
   <joint name="tcp_fixed" type="fixed">
     <parent link="nozzle" />
     <child link="tcp" />
-    <origin xyz="0.2 0.0 0.0" rpy="0.0 0.0 0.0" />
+    <origin xyz="0.2323 0.0 0.0" rpy="0.0 0.0 0.0" />
   </joint>
   <joint name="wheel_front_left_fixed" type="fixed">
     <parent link="base_link" />
