@@ -1,3 +1,7 @@
+%% Declaration of AI use
+% This file is partly made with support from Claude Code
+% All code is written manually, but with support
+
 function gaa_til_start(testnavn, varighet)
 % Kjører roboten i Gazebo til første punkt i banen for valgt test, slik at
 % kjor_test finner roboten i startposen. Trengs fordi Gazebo starter
