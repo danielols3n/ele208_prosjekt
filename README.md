@@ -34,7 +34,6 @@ Hele systemet er modellert som én seriekjede med 9 ledd (`full = lift * arm`) i
 | [`utregning_dynamic_model.py`](utregning_dynamic_model.py) | Overslag over masse og tyngdepunkt for bomseksjonene (aluminiumsprofiler), som brukes som dynamiske parametere i MATLAB-modellen. |
 | [`Gazebo_model/`](Gazebo_model/) | Den endelige ROS 2-pakken `lift_window_sim`, som er brukt til testene i rapporten (kap. 4.7). Inneholder robotmodellen (URDF/xacro, bygget fra DH-tabellen og massene i MATLAB-modellen), fasadeverdenen med vannstrålens kraft (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `gaa_til_start.m` (kjører roboten til startposen for en test), `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
 | [`Gazebo_model/test_results/`](Gazebo_model/test_results/) | Loggene og analysene (`*_analyse.json`) fra de tre Gazebo-testene i rapporten: rasterbane (`top`), dysevinkler (`vinkel`) og lastetest (`last`). |
-| [`Gazebo_model_V10/`](Gazebo_model_V10/) | Forrige versjon av Gazebo-modellen (seks teleskoptrinn, glasset i `y = 1.97`). `gazebo_vaskebane.m` er skrevet for denne versjonen. |
 | [`Presentations/`](Presentations/) | Presentasjonene fra PDR, CDR og sluttpresentasjonen. |
 | [`Bilder + videoer/`](Bilder%20+%20videoer/) | Figurer fra baneplanleggingen, reguleringen, RNE-analysen og Gazebo-kjøringen. |
 
@@ -93,9 +92,9 @@ Gazebo-modellen bruker samme leddvinkler og koordinater som MATLAB-modellen (gla
 | Dysevinkler (R3) | Alle fire ±45°-mål nådd innenfor 0,06° |
 | Lastetest (R4–R6) | Største drift siste 10 s: 0,02° på arm- og liftledd, 0,005 mm på teleskopet |
 
-### Hele vaskebanen (forrige Gazebo-versjon)
+### Hele vaskebanen
 
-`gazebo_vaskebane.m` kjører hele vaskebanen fra planleggeren i Gazebo. Den er skrevet for den forrige modellen i `Gazebo_model_V10/` (kontrolleren `joint_trajectory_controller`, glasset i `y = 1.97`), og må startes med den pakken:
+`gazebo_vaskebane.m` lager vaskebanen fra planleggeren for Gazebo og kjører den over ROS 2:
 ```matlab
 kinematics_model
 res = window_washer_planner(full);
