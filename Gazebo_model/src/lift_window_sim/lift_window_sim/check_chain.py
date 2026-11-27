@@ -1,4 +1,4 @@
-"""Sjekker at de seks teleskoptrinnene beveger seg sammen.
+"""Sjekker at de fire teleskoptrinnene beveger seg sammen.
 """
 import sys
 import time
@@ -17,7 +17,7 @@ class Check(Node):
 
     def on_state(self, msg):
         data = dict(zip(msg.name, msg.position))
-        joints = ('boom_extension',) + tuple(f'stage{i}_slide' for i in range(2,7))
+        joints = ('boom_extension',) + tuple(f'stage{i}_slide' for i in range(2,5))
         if all(name in data for name in joints):
             self.sample = [float(data[name]) for name in joints]
 
@@ -39,7 +39,7 @@ def main():
         err = [abs(v-node.sample[0]) for v in node.sample[1:]]
         if node.sample[0] < minimum or max(err) > .03:
             raise RuntimeError(f'Teleskopleddene følger ikke løftet: stillinger={node.sample}, avvik={err}')
-        node.get_logger().info(f'CHAIN READY: alle seks trinn følger sammen; stillinger={node.sample}')
+        node.get_logger().info(f'CHAIN READY: alle fire trinn følger sammen; stillinger={node.sample}')
     except Exception as exc:
         node.get_logger().error(str(exc))
         sys.exit(1)

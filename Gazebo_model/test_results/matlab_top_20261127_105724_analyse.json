@@ -1,0 +1,35 @@
+{
+  "test": "top",
+  "samples": 77997,
+  "duration_s": 970.08999999999992,
+  "joint_max_error": [
+    0.0011358222652259609,
+    0.0011397504173600304,
+    0.002365325023029996,
+    0.0011622118639200707,
+    0.01971656088453,
+    0.033228159661724987,
+    0.02558272088018998,
+    0.028488885827409938,
+    0.019682504553560021
+  ],
+  "boom_extension_error_m": 0.002365325023029996,
+  "method": "Gazebo controller_state; TCP beregnet fra maalte ledd",
+  "nozzle_mass_kg": 3,
+  "supported_hose_mass_kg": 20,
+  "configured_force_N": [
+    0,
+    -40,
+    0
+  ],
+  "base_anchored": true,
+  "max_tcp_tracking_error_m": 0.01139651309002762,
+  "rms_tcp_tracking_error_m": 0.01048813483466789,
+  "max_wall_hit_tracking_error_m": 0.011258431625586242,
+  "grid_points": 4221,
+  "grid_spacing_m": 0.05,
+  "assumed_effective_spray_swath_m": 0.13,
+  "max_grid_distance_to_path_m": 0.050169947623172853,
+  "grid_covered_at_assumed_swath": true,
+  "caveat": "Sproeytebredde antatt; kraft ikke separat maalt; fast base og posisjonsstyring; kraften virker i verdens -y-retning."
+}

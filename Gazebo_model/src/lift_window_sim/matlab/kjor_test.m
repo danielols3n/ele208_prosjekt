@@ -9,10 +9,14 @@ end
 mappe = fileparts(fileparts(mfilename('fullpath')));
 ledd = ["boom_yaw","boom_pitch","boom_extension","arm_swivel", ...
         "arm_joint_1","arm_joint_2","arm_joint_3","arm_joint_4","arm_joint_5"];
-% Leddgrensene er ikke symmetriske for boom_pitch og boom_extension.
-nedre = [-3, -1.48, 0, -1.57, -6.28, -3.14, -2.95, -6.28, -3.14];
-ovre  = [ 3,  1.00, 2.3, 1.57,  6.28,  3.14,  2.95,  6.28,  3.14];
-vmax = [0.15, 0.12, 0.12, 0.5, 0.7, 0.7, 0.7, 1, 1];
+% Teleskoptrinn 2-4 styres med samme uttrekk som boom_extension (ingen mimic i Gazebo)
+trinn = ["stage2_slide","stage3_slide","stage4_slide"];
+% Leddgrensene er de samme som i URDF-en (lift_arm.urdf.xacro) og MATLAB-modellen:
+% bommen maks 15 grader under horisontal (75-180 grader), teleskopet 3.6-15 m
+% (0-2.85 m per trinn) og UR5-grensen 180 grader/s for armleddene.
+nedre = [-3.14, deg2rad(75), 0,    -0.3, -2*pi, -2*pi, -2*pi, -2*pi, -2*pi];
+ovre  = [ 3.14, pi,          2.85,  1.6,  2*pi,  2*pi,  2*pi,  2*pi,  2*pi];
+vmax  = [0.15, 0.12, 0.12, 0.5, pi, pi, pi, pi, pi];
 
 if testnavn == "vinkel"
     kilde = fullfile(mappe,'trajectories','angles.csv');
@@ -50,12 +54,14 @@ if any(~isfinite(q),'all') || any(q < nedre-1e-6 | q > ovre+1e-6,'all')
     error('Baneverdier er ugyldige eller utenfor leddgrensene.');
 end
 
+% Samme ROS_DOMAIN_ID som i ~/.bashrc i VM-en (24 er standard i ELE208)
+setenv("ROS_DOMAIN_ID","24")
 node = ros2node('/matlab_lift_test');
-sub = ros2subscriber(node,'/joint_trajectory_controller/controller_state', ...
+sub = ros2subscriber(node,'/arm_controller/controller_state', ...
                      'control_msgs/JointTrajectoryControllerState');
 leddsub = ros2subscriber(node,'/joint_states','sensor_msgs/JointState');
 [klient,maal] = ros2actionclient(node, ...
-    '/joint_trajectory_controller/follow_joint_trajectory', ...
+    '/arm_controller/follow_joint_trajectory', ...
     'control_msgs/FollowJointTrajectory');
 if ~waitForServer(klient,'Timeout',30)
     error('Gazebo-kontrolleren svarer ikke. Vent til TOP READY.');
@@ -74,12 +80,12 @@ end
 punkt = ros2message('trajectory_msgs/JointTrajectoryPoint');
 punkter = repmat(punkt,numel(tid),1);
 for k = 1:numel(tid)
-    punkter(k).positions = double(q(k,:)).';
+    punkter(k).positions = double([q(k,:), q(k,3), q(k,3), q(k,3)]).';
     % Her tømmes feltene for hastighet, akselerasjon og kraft.
     punkter(k).velocities = zeros(0,1);
     punkter(k).accelerations = zeros(0,1);
     punkter(k).effort = zeros(0,1);
-    if numel(punkter(k).positions) ~= numel(ledd) || ...
+    if numel(punkter(k).positions) ~= numel(ledd)+numel(trinn) || ...
             ~isempty(punkter(k).velocities) || ...
             ~isempty(punkter(k).accelerations) || ~isempty(punkter(k).effort)
         error('Banepunkt %d har feil antall leddverdier.',k);
@@ -92,14 +98,14 @@ meldingTid = arrayfun(@(p) double(p.time_from_start.sec) + ...
 if any(~isfinite(meldingTid)) || any(diff(meldingTid) <= 0)
     error('Banepunktene har ikke strengt stigende ROS-tider.');
 end
-maal.trajectory.joint_names = cellstr(ledd(:));
+maal.trajectory.joint_names = cellstr([ledd(:); trinn(:)]);
 maal.trajectory.points = punkter;
 
 fprintf('MATLAB sender %d punkter, %.1f s simuleringstid.\n',numel(tid),tid(end));
 handtak = sendGoal(klient,maal);
 % Jeg brukte veiledning av KI til å sette opp logging av ønskede og målte leddstillinger.
 logg = zeros(0,19);
-folgere = zeros(0,7);
+folgere = zeros(0,5);
 siste = tic;
 while true
     status = getStatus(klient,handtak);
@@ -126,8 +132,7 @@ while true
     if testnavn == "last"
         try
             jm = receive(leddsub,0.05);
-            fn = ["boom_extension","stage2_slide","stage3_slide", ...
-                  "stage4_slide","stage5_slide","stage6_slide"];
+            fn = ["boom_extension","stage2_slide","stage3_slide","stage4_slide"];
             [okf,jf] = ismember(fn,string(jm.name));
             if all(okf)
                 ts = double(jm.header.stamp.sec)+double(jm.header.stamp.nanosec)*1e-9;
@@ -155,8 +160,7 @@ writetable(array2table(logg,'VariableNames',cellstr(navn)),loggfil);
 if testnavn == "last" && ~isempty(folgere)
     [dirnavn,basenavn] = fileparts(loggfil);
     folgerfil = fullfile(dirnavn,string(basenavn)+"_folgere.csv");
-    fnavn = ["sim_time_s","boom_extension","stage2_slide", ...
-             "stage3_slide","stage4_slide","stage5_slide","stage6_slide"];
+    fnavn = ["sim_time_s","boom_extension","stage2_slide","stage3_slide","stage4_slide"];
     writetable(array2table(folgere,'VariableNames',cellstr(fnavn)),folgerfil);
     fprintf('Teleskopledd: %s\n',folgerfil);
 end

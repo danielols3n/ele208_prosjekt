@@ -32,9 +32,11 @@ Hele systemet er modellert som én seriekjede med 9 ledd (`full = lift * arm`) i
 | [`window_washer_planner.m`](window_washer_planner.m) | Baneplanlegger med kollisjonssjekk. Lager flekker på vinduene, planlegger løft- og armbevegelser og vaskestrøk, og returnerer en trajektorie (`res.traj`) som kan sendes rett til `fkine`, `rne` eller ROS. |
 | [`gazebo_vaskebane.m`](gazebo_vaskebane.m) | Kjører vaskebanen fra planleggeren på roboten i Gazebo over ROS 2 (`FollowJointTrajectory`), logger målt posisjon og sammenligner den med den planlagte. |
 | [`utregning_dynamic_model.py`](utregning_dynamic_model.py) | Overslag over masse og tyngdepunkt for bomseksjonene (aluminiumsprofiler), som brukes som dynamiske parametere i MATLAB-modellen. |
-| [`Gazebo_model/`](Gazebo_model/) | ROS 2-pakken `lift_window_sim` med robotmodellen (URDF/xacro), fasadeverdenen (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
+| [`Gazebo_model/`](Gazebo_model/) | Den endelige ROS 2-pakken `lift_window_sim`, som er brukt til testene i rapporten (kap. 4.7). Inneholder robotmodellen (URDF/xacro, bygget fra DH-tabellen og massene i MATLAB-modellen), fasadeverdenen med vannstrålens kraft (`facade_load.sdf`), kontrolleroppsett og `start_gazebo.sh`, som bygger pakken og starter Gazebo. Mappen `src/lift_window_sim/matlab/` har testscriptene `gaa_til_start.m` (kjører roboten til startposen for en test), `kjor_test.m` (sender en testbane til Gazebo og logger ønsket og målt leddposisjon) og `vurder_logg.m` (regner ut følgefeil, treffpunkt på veggen og dekning fra loggen). |
+| [`Gazebo_model/test_results/`](Gazebo_model/test_results/) | Loggene og analysene (`*_analyse.json`) fra de tre Gazebo-testene i rapporten: rasterbane (`top`), dysevinkler (`vinkel`) og lastetest (`last`). |
+| [`Gazebo_model_V10/`](Gazebo_model_V10/) | Forrige versjon av Gazebo-modellen (seks teleskoptrinn, glasset i `y = 1.97`). `gazebo_vaskebane.m` er skrevet for denne versjonen. |
 | [`Presentations/`](Presentations/) | Presentasjonene fra PDR, CDR og sluttpresentasjonen. |
-| [`Bilder + videoer/`](Bilder%20+%20videoer/) | Figurer fra baneplanleggingen og en simuleringsvideo (`Robot_sim_8x.mp4`). |
+| [`Bilder + videoer/`](Bilder%20+%20videoer/) | Figurer fra baneplanleggingen, reguleringen, RNE-analysen og Gazebo-kjøringen. |
 
 ## Krav
 
@@ -72,22 +74,34 @@ res = window_washer_planner(full, struct('nSpots', 10, 'showAnimation', true, 'e
    cd Gazebo_model
    bash start_gazebo.sh
    ```
-   Vent til terminalen skriver `TOP READY`. Bruk samme `ROS_DOMAIN_ID` i MATLAB og i Gazebo (24 er standard i ELE208).
-2. Kjør testene fra MATLAB, med `Gazebo_model/src/lift_window_sim/matlab/` på path:
+   Vent til terminalen skriver `TOP READY` (eller `CHAIN NOT READY`, se under). Bruk samme `ROS_DOMAIN_ID` i MATLAB og i Gazebo (24 er standard i ELE208).
+2. Kjør testene fra MATLAB, med `Gazebo_model/src/lift_window_sim/matlab/` som arbeidsmappe:
    ```matlab
+   gaa_til_start("top")          % kjør roboten til startposen (trengs hvis Gazebo skrev CHAIN NOT READY)
    logg = kjor_test("top");      % rasterbane over øverste 10 × 1 m-stripe
    r = vurder_logg(logg, "top"); % følgefeil, treffpunkt på veggen og dekning
    ```
-   De andre testene er `"vinkel"` (dysevinkler på ±45°) og `"last"` (holder stillingen i 60 s med dyse, slange og vannstrålekraft). `vurder_logg` lagrer resultatet som en JSON-fil ved siden av loggen.
-3. For å kjøre hele vaskebanen fra planleggeren:
-   ```matlab
-   kinematics_model
-   res = window_washer_planner(full);
-   gazebo_vaskebane
-   ```
-   Hvis `full` eller `res` mangler, lager `gazebo_vaskebane.m` dem selv.
+   De andre testene er `"vinkel"` (dysevinkler på ±45°) og `"last"` (holder stillingen i 60 s med dyse, slange og vannstrålekraft). Start Gazebo på nytt mellom testene. `vurder_logg` lagrer resultatet som en JSON-fil ved siden av loggen.
 
-Leddvinklene fra MATLAB regnes om til Gazebo-leddene i `gazebo_vaskebane.m`, og glasset ligger i `y = 0` i MATLAB og `y = 1.97` i Gazebo.
+Gazebo-modellen bruker samme leddvinkler og koordinater som MATLAB-modellen (glasset ligger i `y = 0`), bortsett fra at `boom_extension` er uttrekket per teleskoptrinn: `d3 = 3.6 + 4·boom_extension`. Alle fire teleskoptrinn posisjonsstyres med samme uttrekk. For at Gazebo skal håndtere teleskopet, er 20 kg flyttet fra det ytterste trinnet til hvert av de tre indre; totalmassen og gravitasjonsmomentet i startposen er de samme som i MATLAB.
+
+### Resultater fra Gazebo-testene
+
+| Test | Resultat |
+|------|----------|
+| Rasterbane (øverste 10 × 1 m) | Dysens følgefeil maks 11,4 mm (RMS 10,5 mm), treffpunkt på veggen maks 11,3 mm fra planlagt bane, hele stripen dekket med antatt strålebredde 13 cm |
+| Dysevinkler (R3) | Alle fire ±45°-mål nådd innenfor 0,06° |
+| Lastetest (R4–R6) | Største drift siste 10 s: 0,02° på arm- og liftledd, 0,005 mm på teleskopet |
+
+### Hele vaskebanen (forrige Gazebo-versjon)
+
+`gazebo_vaskebane.m` kjører hele vaskebanen fra planleggeren i Gazebo. Den er skrevet for den forrige modellen i `Gazebo_model_V10/` (kontrolleren `joint_trajectory_controller`, glasset i `y = 1.97`), og må startes med den pakken:
+```matlab
+kinematics_model
+res = window_washer_planner(full);
+gazebo_vaskebane
+```
+Hvis `full` eller `res` mangler, lager `gazebo_vaskebane.m` dem selv.
 
 ## Bruk av KI
 
