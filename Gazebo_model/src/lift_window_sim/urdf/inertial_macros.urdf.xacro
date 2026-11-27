@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!-- Treghetsmakroer. MATLAB-modellen (kinematics_model.m) bruker punktmasser med
+     gitt masse og tyngdepunkt, så massen settes direkte i stedet for via tetthet.
+     Gazebo trenger litt treghet for å være stabil, så punktmassen får tregheten til
+     en kule med radius 5 cm. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="inertial_point" params="mass *origin">
+    <inertial>
+      <xacro:insert_block name="origin" />
+      <mass value="${mass}" />
+      <inertia ixx="${0.4*mass*0.05*0.05}" ixy="0.0" ixz="0.0"
+               iyy="${0.4*mass*0.05*0.05}" iyz="0.0"
+               izz="${0.4*mass*0.05*0.05}" />
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="inertial_box" params="mass x y z *origin">
+    <inertial>
+      <xacro:insert_block name="origin" />
+      <mass value="${mass}" />
+      <inertia ixx="${(1/12)*mass*(y*y+z*z)}" ixy="0.0" ixz="0.0"
+               iyy="${(1/12)*mass*(x*x+z*z)}" iyz="0.0"
+               izz="${(1/12)*mass*(x*x+y*y)}" />
+    </inertial>
+  </xacro:macro>
+
+</robot>

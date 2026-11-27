@@ -1,0 +1,79 @@
+{
+  "test": "vinkel",
+  "samples": 7230,
+  "duration_s": 90.120999999999981,
+  "joint_max_error": [
+    0.001121899260713044,
+    0.00112953900248991,
+    0.0024363908948399349,
+    0.0011518769266600781,
+    0.025076122498439934,
+    0.025661086317660065,
+    0.021848701426780082,
+    0.080220047485480173,
+    0.037620913814940149
+  ],
+  "boom_extension_error_m": 0.0024363908948399349,
+  "method": "Gazebo controller_state; TCP beregnet fra maalte ledd",
+  "nozzle_mass_kg": 3,
+  "supported_hose_mass_kg": 20,
+  "configured_force_N": [
+    0,
+    -40,
+    0
+  ],
+  "base_anchored": true,
+  "max_tcp_tracking_error_m": 0.011122191302378076,
+  "rms_tcp_tracking_error_m": 0.0045566912965963949,
+  "max_wall_hit_tracking_error_m": 0.01118793302500925,
+  "target_deg": [
+    [
+      -45,
+      0
+    ],
+    [
+      45,
+      0
+    ],
+    [
+      0,
+      -45
+    ],
+    [
+      0,
+      45
+    ]
+  ],
+  "actual_deg": [
+    [
+      -44.967726058732033,
+      -0.019003546207010179
+    ],
+    [
+      44.96166410150424,
+      -0.043664314852294168
+    ],
+    [
+      -0.0085354005614755556,
+      -44.966996439145852
+    ],
+    [
+      0.011376146720332068,
+      44.958536136831761
+    ]
+  ],
+  "target_error_deg": [
+    0.037453198173322044,
+    0.058105193442561216,
+    0.034089413192342891,
+    0.042996147071999356
+  ],
+  "wall_hit_error_m": [
+    0.00041118933879115481,
+    0.00039238069073691158,
+    0.00015382272302962255,
+    0.00026031988621475958
+  ],
+  "all_four_targets_within_1deg": true,
+  "caveat": "Sproeytebredde antatt; kraft ikke separat maalt; fast base og posisjonsstyring; kraften virker i verdens -y-retning."
+}

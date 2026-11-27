@@ -1,29 +1,36 @@
-# Kontrolleren tar imot leddbanen fra MATLAB.
+# Kontrollerne: joint_state_broadcaster publiserer leddstillingene, og arm_controller
+# tar imot leddbanen fra MATLAB (action: /arm_controller/follow_joint_trajectory).
 controller_manager:
   ros__parameters:
     update_rate: 100
     use_sim_time: true
+
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
-    joint_trajectory_controller:
+
+    arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
-joint_trajectory_controller:
+
+arm_controller:
   ros__parameters:
     joints:
-    - boom_yaw
-    - boom_pitch
-    - boom_extension
-    - arm_swivel
-    - arm_joint_1
-    - arm_joint_2
-    - arm_joint_3
-    - arm_joint_4
-    - arm_joint_5
+      - boom_yaw
+      - boom_pitch
+      - boom_extension
+      - arm_swivel
+      - arm_joint_1
+      - arm_joint_2
+      - arm_joint_3
+      - arm_joint_4
+      - arm_joint_5
+      - stage2_slide
+      - stage3_slide
+      - stage4_slide
     command_interfaces:
-    - position
+      - position
     state_interfaces:
-    - position
-    - velocity
+      - position
+      - velocity
     allow_partial_joints_goal: false
     constraints:
       goal_time: 5.0

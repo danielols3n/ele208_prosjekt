@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>lift_window_sim</name><version>0.5.0</version>
+  <name>lift_window_sim</name><version>0.6.0</version>
   <description>ELE208: teleskoplift, armfeste og femleddet robotarm i Xacro</description>
   <maintainer email="187519@stud.hvl.no">ELE208 project group</maintainer>
   <license>MIT</license>

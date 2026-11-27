@@ -1,0 +1,40 @@
+{
+  "test": "last",
+  "samples": 2625,
+  "duration_s": 59.901,
+  "joint_max_error": [
+    1.9511359879986756E-6,
+    2.6856275598952095E-6,
+    5.9592487700044217E-6,
+    4.1896198490043446E-5,
+    1.0146841800118267E-6,
+    2.9999342969766474E-6,
+    5.9827309829785236E-5,
+    0.00018105101238008459,
+    0.00037093671216004154
+  ],
+  "boom_extension_error_m": 5.9592487700044217E-6,
+  "method": "Gazebo controller_state; TCP beregnet fra maalte ledd",
+  "nozzle_mass_kg": 3,
+  "supported_hose_mass_kg": 20,
+  "configured_force_N": [
+    0,
+    -40,
+    0
+  ],
+  "base_anchored": true,
+  "final_10s_max_error": [
+    1.7689457030289901E-6,
+    2.6856275598952095E-6,
+    5.1817316899516186E-6,
+    4.1139884700003293E-5,
+    2.6585894996600246E-7,
+    2.8896894039842635E-6,
+    5.9074024409966341E-5,
+    0.00018039920459012038,
+    0.00037093671216004154
+  ],
+  "max_follower_error_m": 0.00036156177521018407,
+  "pose_hold_screen_pass": true,
+  "caveat": "Sproeytebredde antatt; kraft ikke separat maalt; fast base og posisjonsstyring; kraften virker i verdens -y-retning."
+}

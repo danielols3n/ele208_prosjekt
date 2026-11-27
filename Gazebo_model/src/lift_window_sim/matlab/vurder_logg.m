@@ -20,8 +20,8 @@ resultat.joint_max_error = max(abs(qa-qr),[],1);
 resultat.boom_extension_error_m = resultat.joint_max_error(3);
 resultat.method = 'Gazebo controller_state; TCP beregnet fra maalte ledd';
 resultat.nozzle_mass_kg = 3;
-resultat.supported_hose_mass_kg = 20;
-resultat.configured_force_N = [40 0 0];
+resultat.supported_hose_mass_kg = 20;   % 10 kg i teleskopbommen og 10 kg på platen, som i MATLAB-modellen
+resultat.configured_force_N = [0 -40 0]; % vannstrålens reaksjonskraft, bort fra veggen (verdens -y)
 resultat.base_anchored = true;
 
 if testnavn == "last"
@@ -39,8 +39,8 @@ if testnavn == "last"
     f = readtable(folgerfil);
     f = f(f.sim_time_s >= t(end)-10,:);
     if isempty(f), error('Mangler teleskopmaalinger i siste 10 s.'); end
-    qf = table2array(f(:,2:7));
-    resultat.max_follower_error_m = max(abs(qf(:,2:6)-qf(:,1)),[],'all');
+    qf = table2array(f(:,2:5));
+    resultat.max_follower_error_m = max(abs(qf(:,2:4)-qf(:,1)),[],'all');
     resultat.pose_hold_screen_pass = all(e([1,2,4:9]) < .1) && ...
         e(3) < .025 && resultat.max_follower_error_m < .025;
 else
@@ -65,11 +65,11 @@ else
         Ta = kinematikk9(qa(utvalg(k),:));
         for typ = 1:2
             if typ == 1, T = Tr; else, T = Ta; end
-            v = T(1:3,1);
+            v = T(1:3,3);                 % dyseaksen (strålen) er z-aksen
             if v(2) <= .05, error('Dysen peker ikke mot veggen.'); end
             % Jeg fikk KI til å forklare HVORDAN strålens retning kan
             % brukes til å finne veggtreffet, og fikk hjelp til koden når det ikke funket/error.
-            p = T(1:3,4)+v*((1.97-T(2,4))/v(2));
+            p = T(1:3,4)+v*((0-T(2,4))/v(2));   % glasset ligger i planet y = 0
             vinkler = atan2d([v(1),v(3)],v(2));
             if typ == 1
                 referanse(k,:) = p([1 3])'; retning_ref(k,:) = vinkler;
@@ -112,7 +112,7 @@ else
         resultat.all_four_targets_within_1deg = all(resultat.target_error_deg < 1);
     end
 end
-resultat.caveat = 'Sproeytebredde antatt; kraft ikke separat maalt; fast base og posisjonsstyring.';
+resultat.caveat = 'Sproeytebredde antatt; kraft ikke separat maalt; fast base og posisjonsstyring; kraften virker i verdens -y-retning.';
 [mappe,navn] = fileparts(loggfil);
 utfil = fullfile(mappe,string(navn)+"_analyse.json");
 fid = fopen(utfil,'w');
