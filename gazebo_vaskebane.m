@@ -1,11 +1,11 @@
 %% gazebo_vaskebane.m
 % Kjorer vaskebanen fra window_washer_planner.m paa roboten i Gazebo over ROS 2.
 %
-% Krav: ROS Toolbox + Peter Corkes Robotics Toolbox. Gazebo maa kjore med samme
-% liftbase som full.base og samme ROS_DOMAIN_ID som MATLAB:
-%     bash start_gazebo.sh                       (base [0 -2 1.5])
-%     bash start_gazebo.sh base:="-3 -2 1.5"     (annen base)
-% Vent til Gazebo-terminalen skriver READY.
+% Krav: ROS Toolbox + Peter Corkes Robotics Toolbox. Gazebo startes med pakken i
+% Gazebo_model/ og samme ROS_DOMAIN_ID som MATLAB:
+%     bash start_gazebo.sh
+% Liftbasen er fast i URDF-en i [-3 -2 1.5], saa full.base maa vaere den samme.
+% Vent til Gazebo-terminalen skriver TOP READY eller CHAIN NOT READY.
 %
 % Rekkefolge i MATLAB:
 %     kinematics_model                         % lager `full`
@@ -14,15 +14,11 @@
 % Finnes ikke `res`, planlegges banen her. Finnes ikke `full`, kjores kinematics_model.m.
 %
 % res.traj(:,4:12) = q = [t1 t2 d3 t2-pi/2 q_arm(1:5)] (konvensjonen til `full`).
-% Omregning til Gazebo-leddene (kontrollert numerisk mot URDF, avvik ~1e-14 m):
-%   boom_yaw       = t1
-%   boom_pitch     = pi/2 - t2
-%   boom_extension = (d3 - 3.15)/6          (seks like teleskoptrinn)
-%   arm_swivel     = q4 + pi/2              (= t2, platen holdes loddrett)
-%   arm_joint_1    = q5 + pi
-%   arm_joint_2..5 = q6..q9
-% Verden: MATLAB-punkt [x y z] ligger i Gazebo i [x, y + 1.97, z]
-% (glasset ligger i y = 0 i MATLAB og y = 1.97 i Gazebo).
+% Omregning til Gazebo-leddene (URDF-en er bygd direkte fra DH-tabellen):
+%   boom_yaw, boom_pitch, arm_swivel, arm_joint_1..5 = samme vinkler som i `full`
+%   boom_extension = (d3 - 3.6)/4           (fire like teleskoptrinn)
+%   stage2_slide..stage4_slide = boom_extension (sendes med til arm_controller)
+% Verden: samme koordinater i MATLAB og Gazebo (glasset ligger i y = 0).
 
 %% Deklarasjon om KI
 % Til denne koden har vi brukt KI som støtte i å skrive kode. Teksten over
@@ -60,9 +56,11 @@ end
 %% 2) Regn om til Gazebo-ledd
 ledd = ["boom_yaw","boom_pitch","boom_extension","arm_swivel", ...
         "arm_joint_1","arm_joint_2","arm_joint_3","arm_joint_4","arm_joint_5"];
-nedre = [-3, -1.5708, 0,     -0.01,  -6.2832*ones(1,5)];
-ovre  = [ 3,  1.5708, 2.475,  3.1516, 6.2832*ones(1,5)];
-vmax  = [0.15, 0.12, 0.12, 0.5, 0.7, 0.7, 0.7, 1, 1];
+trinn = ["stage2_slide","stage3_slide","stage4_slide"];   % foelger boom_extension
+% Leddgrenser og fartsgrenser som i URDF-en (lift_arm.urdf.xacro) og kjor_test.m
+nedre = [-3.14, deg2rad(75), 0,    -0.3, -2*pi*ones(1,5)];
+ovre  = [ 3.14, pi,          2.85,  1.6,  2*pi*ones(1,5)];
+vmax  = [0.15, 0.12, 0.12, 0.5, pi*ones(1,5)];
 
 q_gz = full_til_gazebo(bane(:,4:12));
 for j = 5:9        % +-2*pi endrer ikke roboten; velg forskyvning som holder banen innenfor +-2*pi
@@ -87,16 +85,17 @@ fprintf('Banen: %d punkter, %.0f s i MATLAB -> %.0f s i Gazebo (fartsgrenser).\n
         size(q_gz,1), bane(end,1) - bane(1,1), tid(end));
 
 %% 4) Koble til Gazebo
+setenv("ROS_DOMAIN_ID","24")   % samme som i VM-en og kjor_test.m
 node = ros2node('/matlab_vaskebane');
 sjekk_base_i_gazebo(node, base);
-tilstand = ros2subscriber(node, '/joint_trajectory_controller/controller_state', ...
+tilstand = ros2subscriber(node, '/arm_controller/controller_state', ...
                           'control_msgs/JointTrajectoryControllerState');
 leddsub = ros2subscriber(node, '/joint_states', 'sensor_msgs/JointState');
 [klient, maal] = ros2actionclient(node, ...
-    '/joint_trajectory_controller/follow_joint_trajectory', ...
+    '/arm_controller/follow_joint_trajectory', ...
     'control_msgs/FollowJointTrajectory');
 if ~waitForServer(klient, 'Timeout', 30)
-    error('Gazebo-kontrolleren svarer ikke. Vent til READY og sjekk ROS_DOMAIN_ID.');
+    error('Gazebo-kontrolleren svarer ikke. Vent til TOP READY og sjekk ROS_DOMAIN_ID.');
 end
 js = receive(leddsub, 10);
 [finnes, idx] = ismember(ledd, string(js.name));
@@ -113,13 +112,13 @@ t_send = 0.5 + [linspace(t_flytt/20, t_flytt, 20)'; t_flytt + tid(2:end)];
 punkt = ros2message('trajectory_msgs/JointTrajectoryPoint');
 punkter = repmat(punkt, numel(t_send), 1);
 for k = 1:numel(t_send)
-    punkter(k).positions = q_send(k,:).';
+    punkter(k).positions = [q_send(k,:), q_send(k,3), q_send(k,3), q_send(k,3)].';   % + teleskoptrinn 2-4
     punkter(k).velocities = zeros(0,1);      % tomme felt, ellers avviser kontrolleren
     punkter(k).accelerations = zeros(0,1);
     punkter(k).effort = zeros(0,1);
     punkter(k).time_from_start = ros2duration(t_send(k));
 end
-maal.trajectory.joint_names = cellstr(ledd(:));
+maal.trajectory.joint_names = cellstr([ledd(:); trinn(:)]);
 maal.trajectory.points = punkter;
 fprintf('Sender %d punkter (%.0f s simtid) til Gazebo ...\n', numel(t_send), t_send(end));
 handtak = sendGoal(klient, maal);
@@ -187,11 +186,11 @@ xlabel('Simtid [s]'); ylabel('arm\_joint\_2 [rad]'); legend('ref','maalt'); titl
 %% Lokale funksjoner
 function q_gz = full_til_gazebo(q)
 % `full`-ledd (N x 9) -> Gazebo-ledd (N x 9)
-    q_gz = [q(:,1), pi/2 - q(:,2), (q(:,3) - 3.15)/6, q(:,4) + pi/2, q(:,5) + pi, q(:,6:9)];
+    q_gz = [q(:,1:2), (q(:,3) - 3.6)/4, q(:,4:9)];
 end
 
 function q = gazebo_til_full(q_gz)
-    q = [q_gz(:,1), pi/2 - q_gz(:,2), 3.15 + 6*q_gz(:,3), q_gz(:,4) - pi/2, q_gz(:,5) - pi, q_gz(:,6:9)];
+    q = [q_gz(:,1:2), 3.6 + 4*q_gz(:,3), q_gz(:,4:9)];
 end
 
 function T = fk_full(q, base)
@@ -233,26 +232,26 @@ function sjekk_modell(full)
 end
 
 function sjekk_base_i_gazebo(node, base)
-% Leser world -> base_link fra /tf_static og sammenligner med full.base
+% Leser world -> base_footprint fra /tf_static og sammenligner med full.base
     try
         sub = ros2subscriber(node, '/tf_static', 'tf2_msgs/TFMessage', ...
                              'Durability','transientlocal', 'Reliability','reliable');
         m = receive(sub, 10);
         for tr = m.transforms(:)'
-            if strcmp(tr.child_frame_id, 'base_link')
+            if strcmp(tr.child_frame_id, 'base_footprint')
                 v = tr.transform.translation;
-                gz = double([v.x + 0.7, v.y - 1.97, v.z + 0.75]);   % yaw-akse i MATLAB-koordinater
+                gz = double([v.x + 0.7, v.y, v.z + 1.5]);   % yaw-aksen: base_footprint + [0.7 0 1.5]
                 if norm(gz - base) > 1e-3
-                    melding = sprintf(['Gazebo er startet med base [%g %g %g], men full.base er ' ...
-                        '[%g %g %g]. Start Gazebo med:  bash start_gazebo.sh base:="%g %g %g"'], ...
-                        gz, base, base);
+                    melding = sprintf(['Liftbasen i Gazebo er [%g %g %g], men full.base er ' ...
+                        '[%g %g %g]. Basen er fast i URDF-en, saa full.base maa vaere [-3 -2 1.5].'], ...
+                        gz, base);
                     error('vask:base', '%s', melding);
                 end
                 fprintf('Basen i Gazebo stemmer med full.base [%g %g %g].\n', base);
                 return
             end
         end
-        error('base_link ble ikke funnet i /tf_static');
+        error('base_footprint ble ikke funnet i /tf_static');
     catch e
         if strcmp(e.identifier, 'vask:base'), rethrow(e); end
         melding = sprintf('Kunne ikke lese basen fra /tf_static (%s). Sjekk selv at Gazebo-basen er [%g %g %g].', ...
